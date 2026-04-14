@@ -715,7 +715,7 @@ UserInputService.JumpRequest:Connect(function()
 end)
 
 task.spawn(function()
-    while task.wait(0.1) do
+    while task.wait(0.3) do
         if cfg.esp then
             for _, p in pairs(Players:GetPlayers()) do if p ~= lp then CreateBoxESP(p) end end
         else
@@ -725,26 +725,8 @@ task.spawn(function()
                 end
             end
         end
-        
-        -- FAST STEAL CORRIGÉ (Ulitise fireproximityprompt si disponible)
         if cfg.fastSteal then
-            for _, v in pairs(workspace:GetDescendants()) do 
-                if v:IsA("ProximityPrompt") then 
-                    v.HoldDuration = 0 
-                    
-                    if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-                        local part = v.Parent
-                        if part and part:IsA("BasePart") then
-                            local dist = (part.Position - lp.Character.HumanoidRootPart.Position).Magnitude
-                            if dist < v.MaxActivationDistance then
-                                if fireproximityprompt then
-                                    fireproximityprompt(v)
-                                end
-                            end
-                        end
-                    end
-                end 
-            end
+            for _, v in pairs(workspace:GetDescendants()) do if v:IsA("ProximityPrompt") then v.HoldDuration = 0 end end
         end
     end
 end)
