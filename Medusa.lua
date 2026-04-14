@@ -494,14 +494,14 @@ local function ApplyOptimizer(state)
     else Lighting.GlobalShadows = true end
 end
 
--- [ 8. PANELS AMOVIBLES (DROITE ET ESPACÉS) ] --
+-- [ 8. PANELS AMOVIBLES (CONFIGURATION DES POSITIONS) ] --
 local PanelGui = Instance.new("ScreenGui", lp.PlayerGui)
 PanelGui.Name = "MedusaPanels"
 
 local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     local f = Instance.new("Frame", PanelGui)
     f.Name = name.."Panel"
-    f.Size = UDim2.new(0, 130, 0, 45) -- Un peu plus haut pour le confort mobile
+    f.Size = UDim2.new(0, 130, 0, 45)
     f.Position = pos
     f.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     f.BorderSizePixel = 0
@@ -535,10 +535,12 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     return function(val) updateVisual(val) end
 end
 
--- Positionnement à DROITE (X = 1 offset -150) avec ESPACEMENT vertical de 60 pixels
-local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(1, -150, 0, 150), function(v) ToggleAutoRight(v) end, Config.AutoRight)
-local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(1, -150, 0, 210), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
-local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(1, -150, 0, 270), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
+-- BAT-AIM à GAUCHE
+local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0, 200), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
+
+-- AUTO-RIGHT et AUTO-LEFT à DROITE (plus haut)
+local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(1, -150, 0, 80), function(v) ToggleAutoRight(v) end, Config.AutoRight)
+local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(1, -150, 0, 140), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
 
 -- [ 9. ONGLETS ET LOGIQUE INTERFACE ] --
 
