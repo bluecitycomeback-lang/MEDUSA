@@ -475,25 +475,18 @@ PanelGui.Name = "MedusaPanels"
 local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     local f = Instance.new("Frame", PanelGui)
     f.Name = name.."Panel"
-    f.Size = UDim2.new(0, 120, 0, 30)
+    f.Size = UDim2.new(0, 110, 0, 30)
     f.Position = pos
-    f.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    f.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     f.BorderSizePixel = 0
     f.Active = true
-    f.Draggable = true -- Rend le panel bougeable
+    f.Draggable = true -- Active le mouvement libre du panel
     
-    local corner = Instance.new("UICorner", f)
-    corner.CornerRadius = UDim.new(0, 6)
-    local stroke = Instance.new("UIStroke", f)
-    stroke.Color = Color3.fromRGB(255, 105, 180)
-    stroke.Thickness = 1.5
+    local corner = Instance.new("UICorner", f); corner.CornerRadius = UDim.new(0, 4)
+    local stroke = Instance.new("UIStroke", f); stroke.Color = Color3.fromRGB(255, 105, 180); stroke.Thickness = 1.2
 
     local btn = Instance.new("TextButton", f)
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Font = "GothamBold"
-    btn.TextSize = 11
-    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Size = UDim2.new(1, 0, 1, 0); btn.BackgroundTransparency = 1; btn.Font = "GothamBold"; btn.TextSize = 10; btn.TextColor3 = Color3.new(1,1,1)
     
     local function updateVisual(val)
         btn.Text = name..": "..(val and "ON" or "OFF")
@@ -501,26 +494,18 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     end
     
     btn.MouseButton1Click:Connect(function()
-        local newState = not _G[name.."_State"]
-        _G[name.."_State"] = newState
+        local newState = not (name == "BAT-AIM" and cfg.meleeAimbot or (name == "AUTO-RIGHT" and Config.AutoRight or Config.AutoLeft))
         toggleFunc(newState)
         updateVisual(newState)
     end)
 
-    _G[name.."_State"] = initialValue
     updateVisual(initialValue)
-    
-    -- Permet à Rayfield de mettre à jour le bouton visuellement
-    return function(val)
-        _G[name.."_State"] = val
-        updateVisual(val)
-    end
+    return function(val) updateVisual(val) end
 end
 
--- Création des 3 panels
-local updateRightUI = CreateMiniPanel("AUTO-RIGHT", UDim2.new(0.85, 0, 0.4, 0), function(v) ToggleAutoRight(v) end, Config.AutoRight)
-local updateLeftUI = CreateMiniPanel("AUTO-LEFT", UDim2.new(0.85, 0, 0.45, 0), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
-local updateBatUI = CreateMiniPanel("BAT-AIM", UDim2.new(0.85, 0, 0.5, 0), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
+local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(0, 20, 0.4, 0), function(v) ToggleAutoRight(v) end, Config.AutoRight)
+local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(0, 20, 0.45, 0), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
+local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0.5, 0), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
 
 -- [ 9. ONGLETS ET LOGIQUE INTERFACE ] --
 
@@ -538,7 +523,7 @@ local MeleeToggle = TabCombat:CreateToggle({
     Callback = function(v) 
         cfg.meleeAimbot = v 
         if v then startMeleeAimbot() else stopMeleeAimbot() end 
-        updateBatUI(v)
+        updateBatPanel(v)
     end
 })
 TabCombat:CreateKeybind({
@@ -560,9 +545,9 @@ TabCombat:CreateKeybind({
 -- AUTO-FARM
 local RightToggle = TabFarm:CreateToggle({
     Name = "Auto Right Path", CurrentValue = false, Flag = "AR", 
-    Callback = function(v) ToggleAutoRight(v) updateRightUI(v) end
+    Callback = function(v) ToggleAutoRight(v) updateRightPanel(v) end
 })
-ToggleFunctions["AutoRight"] = function(v) RightToggle:Set(v) updateRightUI(v) end
+ToggleFunctions["AutoRight"] = function(v) RightToggle:Set(v) updateRightPanel(v) end
 
 TabFarm:CreateKeybind({
     Name = "Bind Auto Right", CurrentKeybind = "H", Flag = "BR", 
@@ -571,18 +556,16 @@ TabFarm:CreateKeybind({
 
 local LeftToggle = TabFarm:CreateToggle({
     Name = "Auto Left Path", CurrentValue = false, Flag = "AL", 
-    Callback = function(v) ToggleAutoLeft(v) updateLeftUI(v) end
+    Callback = function(v) ToggleAutoLeft(v) updateLeftPanel(v) end
 })
-ToggleFunctions["AutoLeft"] = function(v) LeftToggle:Set(v) updateLeftUI(v) end
+ToggleFunctions["AutoLeft"] = function(v) LeftToggle:Set(v) updateLeftPanel(v) end
 
 TabFarm:CreateKeybind({
     Name = "Bind Auto Left", CurrentKeybind = "J", Flag = "BL", 
     Callback = function() LeftToggle:Set(not Config.AutoLeft) end
 })
 
--- MOUVEMENT (ETC) -- 
--- [Le reste du script reste identique pour respecter le "mot pour mot"] --
-
+-- MOUVEMENT
 local SpeedToggle = TabMove:CreateToggle({
     Name = "Speed Boost (57)", CurrentValue = false, Flag = "Spd", 
     Callback = function(v) cfg.speed = v end
@@ -601,6 +584,7 @@ TabMove:CreateKeybind({
     Callback = function() JumpToggle:Set(not cfg.infJump) end
 })
 
+-- VISUELS
 TabVisuals:CreateToggle({
     Name = "ESP Anti-Invis", CurrentValue = false, Flag = "ESP", 
     Callback = function(v) cfg.esp = v end
@@ -611,6 +595,7 @@ TabVisuals:CreateToggle({
     Callback = function(v) cfg.xray = v if v then enableXRay() else disableXRay() end end
 })
 
+-- PARAMÈTRES
 TabSettings:CreateToggle({
     Name = "FPS Booster (Optimizer)", CurrentValue = false, Flag = "Opt", 
     Callback = function(v) cfg.optimizer = v ApplyOptimizer(v) end
@@ -621,7 +606,7 @@ TabSettings:CreateToggle({
     Callback = function(v) cfg.fastSteal = v end
 })
 
--- [ STATS UI ET BOUCLE FINALE ] --
+-- [ 9. STATS UI ET BOUCLE FINALE ] --
 local sg = Instance.new("ScreenGui", lp.PlayerGui); sg.Name = "MedusaStatsUI"
 local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = true; f.Draggable = true
 Instance.new("UICorner", f); local st = Instance.new("UIStroke", f); st.Color = Color3.fromRGB(255, 105, 180); st.Thickness = 2
