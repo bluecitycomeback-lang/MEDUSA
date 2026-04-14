@@ -52,7 +52,7 @@ for _, v in pairs(lp.PlayerGui:GetChildren()) do
     if v.Name == "Rayfield" or v.Name == "MedusaStatsUI" or v.Name == "MedusaPanels" then v:Destroy() end
 end
 
--- [ FONCTION DRAG AJOUTÉE ] --
+-- [ FONCTION DE DRAG PERSONNALISÉE ] --
 local function MakeDraggable(gui)
     local dragging, dragInput, dragStart, startPos
     gui.InputBegan:Connect(function(input)
@@ -494,7 +494,7 @@ local function ApplyOptimizer(state)
     else Lighting.GlobalShadows = true end
 end
 
--- [ 8. PANELS AMOVIBLES (MODIFIÉS POUR LE DÉPLACEMENT) ] --
+-- [ 8. PANELS AMOVIBLES (MODIFIÉ POUR BOUGER) ] --
 local PanelGui = Instance.new("ScreenGui", lp.PlayerGui)
 PanelGui.Name = "MedusaPanels"
 
@@ -507,9 +507,9 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     f.BorderSizePixel = 0
     f.Active = true
     
-    -- Utilisation de la fonction Drag personnalisée
+    -- APPEL DU SYSTEME DE DRAG ICI --
     MakeDraggable(f)
-    
+
     local corner = Instance.new("UICorner", f); corner.CornerRadius = UDim.new(0, 6)
     local stroke = Instance.new("UIStroke", f); stroke.Color = Color3.fromRGB(255, 105, 180); stroke.Thickness = 1.8
 
@@ -641,9 +641,7 @@ TabSettings:CreateToggle({
 
 -- [ 9. STATS UI ET BOUCLE FINALE ] --
 local sg = Instance.new("ScreenGui", lp.PlayerGui); sg.Name = "MedusaStatsUI"
-local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = true; 
-
--- Drag également pour le panel de stats
+local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = true
 MakeDraggable(f)
 
 Instance.new("UICorner", f); local st = Instance.new("UIStroke", f); st.Color = Color3.fromRGB(255, 105, 180); st.Thickness = 2
