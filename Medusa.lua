@@ -494,7 +494,7 @@ local function ApplyOptimizer(state)
     else Lighting.GlobalShadows = true end
 end
 
--- [ 8. PANELS AMOVIBLES (CONFIGURATION DES POSITIONS) ] --
+-- [ 8. PANELS AMOVIBLES (CONFIGURATION MOBILE SAFE) ] --
 local PanelGui = Instance.new("ScreenGui", lp.PlayerGui)
 PanelGui.Name = "MedusaPanels"
 
@@ -505,7 +505,7 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     f.Position = pos
     f.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     f.BorderSizePixel = 0
-    f.Active = true
+    f.Active = false -- Désactivé pour laisser passer les clics (saut)
     
     MakeDraggable(f)
 
@@ -535,12 +535,12 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     return function(val) updateVisual(val) end
 end
 
--- BAT-AIM à GAUCHE
-local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0, 200), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
+-- BAT-AIM à GAUCHE (Safe zone mobile)
+local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0, 250), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
 
--- AUTO-RIGHT et AUTO-LEFT à DROITE (plus haut)
-local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(1, -150, 0, 80), function(v) ToggleAutoRight(v) end, Config.AutoRight)
-local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(1, -150, 0, 140), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
+-- AUTO-RIGHT et AUTO-LEFT à DROITE (Remontés pour ne pas gêner le SAUT)
+local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(1, -150, 0, 50), function(v) ToggleAutoRight(v) end, Config.AutoRight)
+local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(1, -150, 0, 110), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
 
 -- [ 9. ONGLETS ET LOGIQUE INTERFACE ] --
 
@@ -643,7 +643,7 @@ TabSettings:CreateToggle({
 
 -- [ 9. STATS UI ET BOUCLE FINALE ] --
 local sg = Instance.new("ScreenGui", lp.PlayerGui); sg.Name = "MedusaStatsUI"
-local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = true
+local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = false
 MakeDraggable(f)
 
 Instance.new("UICorner", f); local st = Instance.new("UIStroke", f); st.Color = Color3.fromRGB(255, 105, 180); st.Thickness = 2
@@ -687,3 +687,4 @@ task.spawn(function()
 end)
 
 Rayfield:LoadConfiguration()
+
