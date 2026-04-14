@@ -494,20 +494,19 @@ local function ApplyOptimizer(state)
     else Lighting.GlobalShadows = true end
 end
 
--- [ 8. PANELS AMOVIBLES (MODIFIÉ POUR BOUGER) ] --
+-- [ 8. PANELS AMOVIBLES (DROITE ET ESPACÉS) ] --
 local PanelGui = Instance.new("ScreenGui", lp.PlayerGui)
 PanelGui.Name = "MedusaPanels"
 
 local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     local f = Instance.new("Frame", PanelGui)
     f.Name = name.."Panel"
-    f.Size = UDim2.new(0, 130, 0, 40)
+    f.Size = UDim2.new(0, 130, 0, 45) -- Un peu plus haut pour le confort mobile
     f.Position = pos
     f.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     f.BorderSizePixel = 0
     f.Active = true
     
-    -- APPEL DU SYSTEME DE DRAG ICI --
     MakeDraggable(f)
 
     local corner = Instance.new("UICorner", f); corner.CornerRadius = UDim.new(0, 6)
@@ -536,9 +535,10 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     return function(val) updateVisual(val) end
 end
 
-local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(0, 20, 0, 150), function(v) ToggleAutoRight(v) end, Config.AutoRight)
-local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(0, 20, 0, 200), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
-local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0, 250), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
+-- Positionnement à DROITE (X = 1 offset -150) avec ESPACEMENT vertical de 60 pixels
+local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(1, -150, 0, 150), function(v) ToggleAutoRight(v) end, Config.AutoRight)
+local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(1, -150, 0, 210), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
+local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(1, -150, 0, 270), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
 
 -- [ 9. ONGLETS ET LOGIQUE INTERFACE ] --
 
