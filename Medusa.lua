@@ -131,7 +131,7 @@ local Window = Rayfield:CreateWindow({
    ConfigurationSaving = { Enabled = true, FolderName = "MedusaHubV57", FileName = "MainConfig" }
 })
 
--- [ 5. SYSTÈME AUTO-BAT (MEDUSA VERSION) ] --
+-- [ 5. NOUVEAU BAT AIMBOT (ANCIEN SYSTÈME + AUTO-HIT) ] --
 
 local function getBat()
     local char = LocalPlayer.Character; if not char then return nil end
@@ -151,7 +151,7 @@ local function findNearestEnemy(myHRP)
             local hum   = p.Character:FindFirstChildOfClass("Humanoid")
             if eh and hum and hum.Health > 0 then
                 local d = (eh.Position - myHRP.Position).Magnitude
-                if d < nearestDist then nearestDist = d; nearest = eh; nearestTorso = torso or eh end
+                if d < nearestDist then nearestDist=d; nearest=eh; nearestTorso=torso or eh end
             end
         end
     end
@@ -161,13 +161,7 @@ end
 local function startBatAimbot()
     if Connections.batAimbot then return end
     Connections.batAimbot = RunService.Heartbeat:Connect(function()
-        if not Enabled.BatAimbot then 
-            if lp.Character and lp.Character:FindFirstChild("Humanoid") then
-                lp.Character.Humanoid.AutoRotate = true
-            end
-            return 
-        end
-        
+        if not Enabled.BatAimbot then return end
         local c = LocalPlayer.Character; if not c then return end
         local h = c:FindFirstChild("HumanoidRootPart")
         local hum = c:FindFirstChildOfClass("Humanoid")
@@ -177,23 +171,19 @@ local function startBatAimbot()
         local target, dist, torso = findNearestEnemy(h)
         
         if target and torso then
-            -- ATTACK AUTOMATIQUE
+            -- AJOUT : AUTO TAPE
             if bat and bat.Parent == c then
                 bat:Activate()
             end
-            
-            -- LOOK AT TARGET
-            hum.AutoRotate = false
-            h.CFrame = CFrame.lookAt(h.Position, Vector3.new(target.Position.X, h.Position.Y, target.Position.Z))
-            
-            -- VELOCITY & PREDICTION
+
+            -- LOGIQUE ANCIENNE
             local targetVel = torso.AssemblyLinearVelocity
             local dir = torso.Position - h.Position
             local flatDir = Vector3.new(dir.X, 0, dir.Z)
             local flatDist = flatDir.Magnitude
             local timeToReach = flatDist / 80
             local predictedPos = torso.Position + targetVel * timeToReach
-            local spd = 58 
+            local spd = 58
             
             if flatDist > 1 then
                 local moveDir = Vector3.new(predictedPos.X-h.Position.X, 0, predictedPos.Z-h.Position.Z).Unit
@@ -203,20 +193,12 @@ local function startBatAimbot()
             else
                 h.AssemblyLinearVelocity = Vector3.new(targetVel.X, targetVel.Y, targetVel.Z)
             end
-        else
-            hum.AutoRotate = true
         end
     end)
 end
 
 local function stopBatAimbot()
-    if Connections.batAimbot then 
-        Connections.batAimbot:Disconnect()
-        Connections.batAimbot = nil 
-    end
-    if lp.Character and lp.Character:FindFirstChild("Humanoid") then
-        lp.Character.Humanoid.AutoRotate = true
-    end
+    if Connections.batAimbot then Connections.batAimbot:Disconnect(); Connections.batAimbot = nil end
 end
 
 -- ─── ANTI RAGDOLL V1 ───
@@ -570,6 +552,7 @@ end
 -- [ 8. PANELS AMOVIBLES ] --
 local PanelGui = Instance.new("ScreenGui", lp.PlayerGui)
 PanelGui.Name = "MedusaPanels"
+PanelGui.ResetOnSpawn = false -- CORRECTIF : Empeche la disparition apres la mort
 
 local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     local f = Instance.new("Frame", PanelGui)
@@ -698,6 +681,7 @@ TabSettings:CreateToggle({
 
 -- [ 10. STATS UI ET BOUCLE FINALE ] --
 local sg = Instance.new("ScreenGui", lp.PlayerGui); sg.Name = "MedusaStatsUI"
+sg.ResetOnSpawn = false -- CORRECTIF : Empeche la disparition apres la mort
 local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = false
 MakeDraggable(f)
 
