@@ -26,8 +26,8 @@ local cfg = {
 local Config = { AutoRight = false, AutoLeft = false }
 local lagActive = false 
 local ToggleFunctions = {}
-local Connections = {} -- Table pour le nouveau Bat Aimbot
-local Enabled = { BatAimbot = false } -- Etat pour le nouveau Bat Aimbot
+local Connections = {} 
+local Enabled = { BatAimbot = false } 
 local AutoWalkConnection = nil
 local isAutoWalking = false
 local isReturning = false
@@ -82,7 +82,6 @@ attachSpeedDisplay()
 local function GetHumanoid() return lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") end
 local function GetRootPart() return lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") end
 
--- Détection du Brainrot
 RunService.Heartbeat:Connect(function()
     if lp.Character and lp.Character:FindFirstChild("Brainrot") then
         HasBrainrotInHand = true
@@ -96,7 +95,6 @@ for _, v in pairs(lp.PlayerGui:GetChildren()) do
     if v.Name == "Rayfield" or v.Name == "MedusaStatsUI" or v.Name == "MedusaPanels" then v:Destroy() end
 end
 
--- [ FONCTION DE DRAG PERSONNALISÉE ] --
 local function MakeDraggable(gui)
     local dragging, dragInput, dragStart, startPos
     gui.InputBegan:Connect(function(input)
@@ -131,7 +129,7 @@ local Window = Rayfield:CreateWindow({
    ConfigurationSaving = { Enabled = true, FolderName = "MedusaHubV57", FileName = "MainConfig" }
 })
 
--- [ 5. NOUVEAU BAT AIMBOT (MOT POUR MOT) ] --
+-- [ 5. BAT AIMBOT HYBRIDE (TAPE + REGARDE + VELOCITE) ] --
 
 local function getBat()
     local char = LocalPlayer.Character; if not char then return nil end
@@ -161,35 +159,59 @@ end
 local function startBatAimbot()
     if Connections.batAimbot then return end
     Connections.batAimbot = RunService.Heartbeat:Connect(function()
-        if not Enabled.BatAimbot then return end
+        if not Enabled.BatAimbot then 
+            if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+                lp.Character.Humanoid.AutoRotate = true
+            end
+            return 
+        end
+        
         local c = LocalPlayer.Character; if not c then return end
         local h = c:FindFirstChild("HumanoidRootPart")
         local hum = c:FindFirstChildOfClass("Humanoid")
         if not h or not hum then return end
+        
         local bat = getBat()
-        if not bat then return end -- only run if bat exists, but don't force equip
         local target, dist, torso = findNearestEnemy(h)
-        if not target or not torso then return end
-        local targetVel = torso.AssemblyLinearVelocity
-        local dir = torso.Position - h.Position
-        local flatDir = Vector3.new(dir.X, 0, dir.Z)
-        local flatDist = flatDir.Magnitude
-        local timeToReach = flatDist / 80
-        local predictedPos = torso.Position + targetVel * timeToReach
-        local spd = 58
-        if flatDist > 1 then
-            local moveDir = Vector3.new(predictedPos.X-h.Position.X, 0, predictedPos.Z-h.Position.Z).Unit
-            local yDiff = torso.Position.Y - h.Position.Y
-            local ySpeed = math.abs(yDiff) > 0.5 and math.clamp(yDiff*8, -100, 100) or targetVel.Y
-            h.AssemblyLinearVelocity = Vector3.new(moveDir.X*spd, ySpeed, moveDir.Z*spd)
+        
+        if target and torso then
+            -- TAPE AUTOMATIQUEMENT
+            if bat and bat.Parent == c then
+                bat:Activate()
+            end
+            
+            -- REGARDE LE MEC (FORCE)
+            hum.AutoRotate = false
+            h.CFrame = CFrame.lookAt(h.Position, Vector3.new(target.Position.X, h.Position.Y, target.Position.Z))
+            
+            -- SYSTEME VELOCITE & PREDICTION
+            local targetVel = torso.AssemblyLinearVelocity
+            local dir = torso.Position - h.Position
+            local flatDir = Vector3.new(dir.X, 0, dir.Z)
+            local flatDist = flatDir.Magnitude
+            local timeToReach = flatDist / 80
+            local predictedPos = torso.Position + targetVel * timeToReach
+            local spd = 58
+            
+            if flatDist > 1 then
+                local moveDir = Vector3.new(predictedPos.X-h.Position.X, 0, predictedPos.Z-h.Position.Z).Unit
+                local yDiff = torso.Position.Y - h.Position.Y
+                local ySpeed = math.abs(yDiff) > 0.5 and math.clamp(yDiff*8, -100, 100) or targetVel.Y
+                h.AssemblyLinearVelocity = Vector3.new(moveDir.X*spd, ySpeed, moveDir.Z*spd)
+            else
+                h.AssemblyLinearVelocity = Vector3.new(targetVel.X, targetVel.Y, targetVel.Z)
+            end
         else
-            h.AssemblyLinearVelocity = Vector3.new(targetVel.X, targetVel.Y, targetVel.Z)
+            hum.AutoRotate = true
         end
     end)
 end
 
 local function stopBatAimbot()
     if Connections.batAimbot then Connections.batAimbot:Disconnect(); Connections.batAimbot = nil end
+    if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+        lp.Character.Humanoid.AutoRotate = true
+    end
 end
 
 -- ─── ANTI RAGDOLL V1 ───
@@ -494,7 +516,7 @@ function ToggleAutoLeft(enabled)
     end
 end
 
--- [ 7. SCRIPTS VISUELS (MOT POUR MOT) ] --
+-- [ 7. SCRIPTS VISUELS ] --
 
 local originalTransparency = {}
 local function enableXRay()
@@ -601,7 +623,7 @@ end, lagActive)
 local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(1, -150, 0, 50), function(v) ToggleAutoRight(v) end, Config.AutoRight)
 local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(1, -150, 0, 110), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
 
--- [ 9. ONGLETS ET LOGIQUE INTERFACE ] --
+-- [ 9. ONGLETS ET BIND SYSTEM ] --
 
 local TabCombat = Window:CreateTab("COMBAT")
 local TabFarm = Window:CreateTab("AUTO-FARM")
@@ -610,7 +632,7 @@ local TabVisuals = Window:CreateTab("VISUELS")
 local TabSettings = Window:CreateTab("PARAMÈTRES")
 
 local MeleeToggle = TabCombat:CreateToggle({
-    Name = "New Bat Aimbot", 
+    Name = "Bat Aimbot (Auto-Hit)", 
     CurrentValue = false, 
     Flag = "MeleeAimbot", 
     Callback = function(v) 
@@ -619,12 +641,20 @@ local MeleeToggle = TabCombat:CreateToggle({
         updateBatPanel(v)
     end
 })
+TabCombat:CreateKeybind({
+    Name = "Bind Aimbot", CurrentKeybind = "F", Flag = "BF", 
+    Callback = function() MeleeToggle:Set(not Enabled.BatAimbot) end
+})
 
-TabCombat:CreateToggle({
+local RagdollToggle = TabCombat:CreateToggle({
     Name = "Anti-Ragdoll v1", 
     CurrentValue = false, 
     Flag = "AntiRagdoll", 
     Callback = function(v) cfg.antiRagdoll = v if v then startAntiRagdoll() else stopAntiRagdoll() end end
+})
+TabCombat:CreateKeybind({
+    Name = "Bind Anti-Ragdoll", CurrentKeybind = "G", Flag = "BG", 
+    Callback = function() RagdollToggle:Set(not cfg.antiRagdoll) end
 })
 
 local RightToggle = TabFarm:CreateToggle({
@@ -632,21 +662,37 @@ local RightToggle = TabFarm:CreateToggle({
     Callback = function(v) ToggleAutoRight(v) updateRightPanel(v) end
 })
 ToggleFunctions["AutoRight"] = function(v) RightToggle:Set(v) updateRightPanel(v) end
+TabFarm:CreateKeybind({
+    Name = "Bind Auto Right", CurrentKeybind = "H", Flag = "BR", 
+    Callback = function() RightToggle:Set(not Config.AutoRight) end
+})
 
 local LeftToggle = TabFarm:CreateToggle({
     Name = "Auto Left Path", CurrentValue = false, Flag = "AL", 
     Callback = function(v) ToggleAutoLeft(v) updateLeftPanel(v) end
 })
 ToggleFunctions["AutoLeft"] = function(v) LeftToggle:Set(v) updateLeftPanel(v) end
+TabFarm:CreateKeybind({
+    Name = "Bind Auto Left", CurrentKeybind = "J", Flag = "BL", 
+    Callback = function() LeftToggle:Set(not Config.AutoLeft) end
+})
 
-TabMove:CreateToggle({
+local SpeedToggle = TabMove:CreateToggle({
     Name = "Speed Boost (57)", CurrentValue = false, Flag = "Spd", 
     Callback = function(v) cfg.speed = v end
 })
+TabMove:CreateKeybind({
+    Name = "Bind Speed", CurrentKeybind = "Q", Flag = "BQ", 
+    Callback = function() SpeedToggle:Set(not cfg.speed) end
+})
 
-TabMove:CreateToggle({
+local JumpToggle = TabMove:CreateToggle({
     Name = "Infinite Jump", CurrentValue = false, Flag = "IJ", 
     Callback = function(v) cfg.infJump = v end
+})
+TabMove:CreateKeybind({
+    Name = "Bind Jump", CurrentKeybind = "C", Flag = "BC", 
+    Callback = function() JumpToggle:Set(not cfg.infJump) end
 })
 
 TabVisuals:CreateToggle({
