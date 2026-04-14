@@ -52,6 +52,32 @@ for _, v in pairs(lp.PlayerGui:GetChildren()) do
     if v.Name == "Rayfield" or v.Name == "MedusaStatsUI" or v.Name == "MedusaPanels" then v:Destroy() end
 end
 
+-- [ FONCTION DRAG AJOUTÉE ] --
+local function MakeDraggable(gui)
+    local dragging, dragInput, dragStart, startPos
+    gui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = gui.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    gui.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
 -- [ 4. INITIALISATION RAYFIELD ] --
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
@@ -468,19 +494,21 @@ local function ApplyOptimizer(state)
     else Lighting.GlobalShadows = true end
 end
 
--- [ 8. PANELS AMOVIBLES (OPTIMISÉS MOBILE) ] --
+-- [ 8. PANELS AMOVIBLES (MODIFIÉS POUR LE DÉPLACEMENT) ] --
 local PanelGui = Instance.new("ScreenGui", lp.PlayerGui)
 PanelGui.Name = "MedusaPanels"
 
 local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     local f = Instance.new("Frame", PanelGui)
     f.Name = name.."Panel"
-    f.Size = UDim2.new(0, 130, 0, 40) -- Un peu plus grand pour mobile
+    f.Size = UDim2.new(0, 130, 0, 40)
     f.Position = pos
     f.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     f.BorderSizePixel = 0
     f.Active = true
-    f.Draggable = true -- Entièrement déplaçable
+    
+    -- Utilisation de la fonction Drag personnalisée
+    MakeDraggable(f)
     
     local corner = Instance.new("UICorner", f); corner.CornerRadius = UDim.new(0, 6)
     local stroke = Instance.new("UIStroke", f); stroke.Color = Color3.fromRGB(255, 105, 180); stroke.Thickness = 1.8
@@ -508,7 +536,6 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     return function(val) updateVisual(val) end
 end
 
--- Espacement vertical de 50 pixels pour éviter que ça se touche sur mobile
 local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(0, 20, 0, 150), function(v) ToggleAutoRight(v) end, Config.AutoRight)
 local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(0, 20, 0, 200), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
 local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0, 250), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
@@ -614,7 +641,11 @@ TabSettings:CreateToggle({
 
 -- [ 9. STATS UI ET BOUCLE FINALE ] --
 local sg = Instance.new("ScreenGui", lp.PlayerGui); sg.Name = "MedusaStatsUI"
-local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = true; f.Draggable = true
+local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = true; 
+
+-- Drag également pour le panel de stats
+MakeDraggable(f)
+
 Instance.new("UICorner", f); local st = Instance.new("UIStroke", f); st.Color = Color3.fromRGB(255, 105, 180); st.Thickness = 2
 local t = Instance.new("TextLabel", f); t.Size = UDim2.new(1,0,1,0); t.BackgroundTransparency = 1; t.TextColor3 = Color3.fromRGB(255,105,180); t.Font = "GothamBold"; t.TextSize = 12
 
