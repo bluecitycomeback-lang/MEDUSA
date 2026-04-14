@@ -26,8 +26,8 @@ local cfg = {
 local Config = { AutoRight = false, AutoLeft = false }
 local lagActive = false 
 local ToggleFunctions = {}
-local Connections = {} -- Table pour le nouveau Bat Aimbot
-local Enabled = { BatAimbot = false } -- Etat pour le nouveau Bat Aimbot
+local Connections = {} 
+local Enabled = { BatAimbot = false } 
 local AutoWalkConnection = nil
 local isAutoWalking = false
 local isReturning = false
@@ -131,7 +131,7 @@ local Window = Rayfield:CreateWindow({
    ConfigurationSaving = { Enabled = true, FolderName = "MedusaHubV57", FileName = "MainConfig" }
 })
 
--- [ 5. NOUVEAU BAT AIMBOT (MOT POUR MOT) ] --
+-- [ 5. SYSTÈME AUTO-BAT (MEDUSA VERSION) ] --
 
 local function getBat()
     local char = LocalPlayer.Character; if not char then return nil end
@@ -151,7 +151,7 @@ local function findNearestEnemy(myHRP)
             local hum   = p.Character:FindFirstChildOfClass("Humanoid")
             if eh and hum and hum.Health > 0 then
                 local d = (eh.Position - myHRP.Position).Magnitude
-                if d < nearestDist then nearestDist=d; nearest=eh; nearestTorso=torso or eh end
+                if d < nearestDist then nearestDist = d; nearest = eh; nearestTorso = torso or eh end
             end
         end
     end
@@ -161,35 +161,62 @@ end
 local function startBatAimbot()
     if Connections.batAimbot then return end
     Connections.batAimbot = RunService.Heartbeat:Connect(function()
-        if not Enabled.BatAimbot then return end
+        if not Enabled.BatAimbot then 
+            if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+                lp.Character.Humanoid.AutoRotate = true
+            end
+            return 
+        end
+        
         local c = LocalPlayer.Character; if not c then return end
         local h = c:FindFirstChild("HumanoidRootPart")
         local hum = c:FindFirstChildOfClass("Humanoid")
         if not h or not hum then return end
+        
         local bat = getBat()
-        if not bat then return end -- only run if bat exists, but don't force equip
         local target, dist, torso = findNearestEnemy(h)
-        if not target or not torso then return end
-        local targetVel = torso.AssemblyLinearVelocity
-        local dir = torso.Position - h.Position
-        local flatDir = Vector3.new(dir.X, 0, dir.Z)
-        local flatDist = flatDir.Magnitude
-        local timeToReach = flatDist / 80
-        local predictedPos = torso.Position + targetVel * timeToReach
-        local spd = 58
-        if flatDist > 1 then
-            local moveDir = Vector3.new(predictedPos.X-h.Position.X, 0, predictedPos.Z-h.Position.Z).Unit
-            local yDiff = torso.Position.Y - h.Position.Y
-            local ySpeed = math.abs(yDiff) > 0.5 and math.clamp(yDiff*8, -100, 100) or targetVel.Y
-            h.AssemblyLinearVelocity = Vector3.new(moveDir.X*spd, ySpeed, moveDir.Z*spd)
+        
+        if target and torso then
+            -- ATTACK AUTOMATIQUE
+            if bat and bat.Parent == c then
+                bat:Activate()
+            end
+            
+            -- LOOK AT TARGET
+            hum.AutoRotate = false
+            h.CFrame = CFrame.lookAt(h.Position, Vector3.new(target.Position.X, h.Position.Y, target.Position.Z))
+            
+            -- VELOCITY & PREDICTION
+            local targetVel = torso.AssemblyLinearVelocity
+            local dir = torso.Position - h.Position
+            local flatDir = Vector3.new(dir.X, 0, dir.Z)
+            local flatDist = flatDir.Magnitude
+            local timeToReach = flatDist / 80
+            local predictedPos = torso.Position + targetVel * timeToReach
+            local spd = 58 
+            
+            if flatDist > 1 then
+                local moveDir = Vector3.new(predictedPos.X-h.Position.X, 0, predictedPos.Z-h.Position.Z).Unit
+                local yDiff = torso.Position.Y - h.Position.Y
+                local ySpeed = math.abs(yDiff) > 0.5 and math.clamp(yDiff*8, -100, 100) or targetVel.Y
+                h.AssemblyLinearVelocity = Vector3.new(moveDir.X*spd, ySpeed, moveDir.Z*spd)
+            else
+                h.AssemblyLinearVelocity = Vector3.new(targetVel.X, targetVel.Y, targetVel.Z)
+            end
         else
-            h.AssemblyLinearVelocity = Vector3.new(targetVel.X, targetVel.Y, targetVel.Z)
+            hum.AutoRotate = true
         end
     end)
 end
 
 local function stopBatAimbot()
-    if Connections.batAimbot then Connections.batAimbot:Disconnect(); Connections.batAimbot = nil end
+    if Connections.batAimbot then 
+        Connections.batAimbot:Disconnect()
+        Connections.batAimbot = nil 
+    end
+    if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+        lp.Character.Humanoid.AutoRotate = true
+    end
 end
 
 -- ─── ANTI RAGDOLL V1 ───
@@ -297,7 +324,7 @@ local function stopAntiRagdoll()
     cachedCharData = {}
 end
 
--- [ 6. AUTO WALK (MOT POUR MOT) ] --
+-- [ 6. AUTO WALK ] --
 
 local FORWARD_SPEED = 59
 local RETURN_SPEED = 29
@@ -494,7 +521,7 @@ function ToggleAutoLeft(enabled)
     end
 end
 
--- [ 7. SCRIPTS VISUELS (MOT POUR MOT) ] --
+-- [ 7. SCRIPTS VISUELS ] --
 
 local originalTransparency = {}
 local function enableXRay()
