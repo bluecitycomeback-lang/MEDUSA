@@ -1,4 +1,4 @@
--- [[ MEDUSA HUB V57 - THE DEFINITIVE AUTO-SAVE EDITION ]] --
+-- [[ MEDUSA HUB V57 - THE DEFINITIVE AUTO-SAVE EDITION (HYBRID THORIUM) ]] --
 
 local lp = game:GetService("Players").LocalPlayer
 local Player = lp
@@ -9,6 +9,7 @@ local Lighting = game:GetService("Lighting")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage") -- Requis pour Thorium
 
 -- [ 1. CONFIGURATION & VARIABLES GLOBALES ] --
 local cfg = {
@@ -26,8 +27,8 @@ local cfg = {
 local Config = { AutoRight = false, AutoLeft = false }
 local lagActive = false 
 local ToggleFunctions = {}
-local Connections = {} 
-local Enabled = { BatAimbot = false } 
+local Connections = {} -- Table pour le nouveau Bat Aimbot
+local Enabled = { BatAimbot = false } -- Etat pour le nouveau Bat Aimbot
 local AutoWalkConnection = nil
 local isAutoWalking = false
 local isReturning = false
@@ -37,6 +38,9 @@ local OriginalCameraZoom = nil
 local OriginalCameraMaxZoom = nil
 local IsShuttingDown = false
 local HasBrainrotInHand = false
+
+-- Variables pour Thorium Spam
+local spamming = {}
 
 -- [[ SPEED INDICATOR ]] --
 local speedBillboard = Instance.new("BillboardGui")
@@ -91,6 +95,35 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+-- [ THORIUM SPAM LOGIC ] --
+local function getStealRemote()
+    local net = ReplicatedStorage:FindFirstChild("Packages")
+        and ReplicatedStorage.Packages:FindFirstChild("Net")
+    if not net then return nil end
+    return net:FindFirstChild("StealService/Grab", true)
+end
+
+local function startSpam(player)
+    if spamming[player.UserId] then return end
+    spamming[player.UserId] = true
+    task.spawn(function()
+        while spamming[player.UserId] and player.Parent do
+            local remote = getStealRemote()
+            if remote then
+                pcall(function()
+                    remote:FireServer(player.Character)
+                end)
+            end
+            task.wait(0.1)
+        end
+        spamming[player.UserId] = nil
+    end)
+end
+
+local function stopSpam(player)
+    spamming[player.UserId] = nil
+end
+
 -- [ 3. NETTOYAGE UI ] --
 for _, v in pairs(lp.PlayerGui:GetChildren()) do
     if v.Name == "Rayfield" or v.Name == "MedusaStatsUI" or v.Name == "MedusaPanels" then v:Destroy() end
@@ -131,7 +164,7 @@ local Window = Rayfield:CreateWindow({
    ConfigurationSaving = { Enabled = true, FolderName = "MedusaHubV57", FileName = "MainConfig" }
 })
 
--- [ 5. NOUVEAU BAT AIMBOT (ANCIEN SYSTÈME + AUTO-HIT) ] --
+-- [ 5. NOUVEAU BAT AIMBOT (MOT POUR MOT) ] --
 
 local function getBat()
     local char = LocalPlayer.Character; if not char then return nil end
@@ -166,33 +199,24 @@ local function startBatAimbot()
         local h = c:FindFirstChild("HumanoidRootPart")
         local hum = c:FindFirstChildOfClass("Humanoid")
         if not h or not hum then return end
-        
         local bat = getBat()
+        if not bat then return end -- only run if bat exists, but don't force equip
         local target, dist, torso = findNearestEnemy(h)
-        
-        if target and torso then
-            -- AJOUT : AUTO TAPE
-            if bat and bat.Parent == c then
-                bat:Activate()
-            end
-
-            -- LOGIQUE ANCIENNE
-            local targetVel = torso.AssemblyLinearVelocity
-            local dir = torso.Position - h.Position
-            local flatDir = Vector3.new(dir.X, 0, dir.Z)
-            local flatDist = flatDir.Magnitude
-            local timeToReach = flatDist / 80
-            local predictedPos = torso.Position + targetVel * timeToReach
-            local spd = 58
-            
-            if flatDist > 1 then
-                local moveDir = Vector3.new(predictedPos.X-h.Position.X, 0, predictedPos.Z-h.Position.Z).Unit
-                local yDiff = torso.Position.Y - h.Position.Y
-                local ySpeed = math.abs(yDiff) > 0.5 and math.clamp(yDiff*8, -100, 100) or targetVel.Y
-                h.AssemblyLinearVelocity = Vector3.new(moveDir.X*spd, ySpeed, moveDir.Z*spd)
-            else
-                h.AssemblyLinearVelocity = Vector3.new(targetVel.X, targetVel.Y, targetVel.Z)
-            end
+        if not target or not torso then return end
+        local targetVel = torso.AssemblyLinearVelocity
+        local dir = torso.Position - h.Position
+        local flatDir = Vector3.new(dir.X, 0, dir.Z)
+        local flatDist = flatDir.Magnitude
+        local timeToReach = flatDist / 80
+        local predictedPos = torso.Position + targetVel * timeToReach
+        local spd = 58
+        if flatDist > 1 then
+            local moveDir = Vector3.new(predictedPos.X-h.Position.X, 0, predictedPos.Z-h.Position.Z).Unit
+            local yDiff = torso.Position.Y - h.Position.Y
+            local ySpeed = math.abs(yDiff) > 0.5 and math.clamp(yDiff*8, -100, 100) or targetVel.Y
+            h.AssemblyLinearVelocity = Vector3.new(moveDir.X*spd, ySpeed, moveDir.Z*spd)
+        else
+            h.AssemblyLinearVelocity = Vector3.new(targetVel.X, targetVel.Y, targetVel.Z)
         end
     end)
 end
@@ -306,7 +330,7 @@ local function stopAntiRagdoll()
     cachedCharData = {}
 end
 
--- [ 6. AUTO WALK ] --
+-- [ 6. AUTO WALK (MOT POUR MOT) ] --
 
 local FORWARD_SPEED = 59
 local RETURN_SPEED = 29
@@ -503,7 +527,7 @@ function ToggleAutoLeft(enabled)
     end
 end
 
--- [ 7. SCRIPTS VISUELS ] --
+-- [ 7. SCRIPTS VISUELS (MOT POUR MOT) ] --
 
 local originalTransparency = {}
 local function enableXRay()
@@ -552,7 +576,6 @@ end
 -- [ 8. PANELS AMOVIBLES ] --
 local PanelGui = Instance.new("ScreenGui", lp.PlayerGui)
 PanelGui.Name = "MedusaPanels"
-PanelGui.ResetOnSpawn = false -- CORRECTIF : Empeche la disparition apres la mort
 
 local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     local f = Instance.new("Frame", PanelGui)
@@ -616,6 +639,7 @@ local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(1, -150, 0, 110),
 local TabCombat = Window:CreateTab("COMBAT")
 local TabFarm = Window:CreateTab("AUTO-FARM")
 local TabMove = Window:CreateTab("MOUVEMENT")
+local TabThorium = Window:CreateTab("THORIUM SPAM") -- NOUVEAU PANEL SPAMMER
 local TabVisuals = Window:CreateTab("VISUELS")
 local TabSettings = Window:CreateTab("PARAMÈTRES")
 
@@ -649,6 +673,25 @@ local LeftToggle = TabFarm:CreateToggle({
 })
 ToggleFunctions["AutoLeft"] = function(v) LeftToggle:Set(v) updateLeftPanel(v) end
 
+-- [ THORIUM SPAM PANEL IMPLEMENTATION ] --
+TabThorium:CreateLabel("Spam players (Steal Grab)")
+
+local function RefreshSpamList()
+    -- On pourrait ajouter un bouton de rafraîchissement si nécessaire
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            TabThorium:CreateToggle({
+                Name = "Spam: " .. player.Name,
+                CurrentValue = false,
+                Callback = function(v)
+                    if v then startSpam(player) else stopSpam(player) end
+                end
+            })
+        end
+    end
+end
+RefreshSpamList()
+
 TabMove:CreateToggle({
     Name = "Speed Boost (57)", CurrentValue = false, Flag = "Spd", 
     Callback = function(v) cfg.speed = v end
@@ -681,7 +724,6 @@ TabSettings:CreateToggle({
 
 -- [ 10. STATS UI ET BOUCLE FINALE ] --
 local sg = Instance.new("ScreenGui", lp.PlayerGui); sg.Name = "MedusaStatsUI"
-sg.ResetOnSpawn = false -- CORRECTIF : Empeche la disparition apres la mort
 local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = false
 MakeDraggable(f)
 
