@@ -8,7 +8,7 @@ local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui") -- Ajouté pour l'indicateur
+local CoreGui = game:GetService("CoreGui")
 
 -- [ 1. CONFIGURATION & VARIABLES GLOBALES ] --
 local cfg = {
@@ -24,7 +24,10 @@ local cfg = {
 }
 
 local Config = { AutoRight = false, AutoLeft = false }
+local lagActive = false 
 local ToggleFunctions = {}
+local Connections = {} -- Table pour le nouveau Bat Aimbot
+local Enabled = { BatAimbot = false } -- Etat pour le nouveau Bat Aimbot
 local AutoWalkConnection = nil
 local isAutoWalking = false
 local isReturning = false
@@ -128,61 +131,65 @@ local Window = Rayfield:CreateWindow({
    ConfigurationSaving = { Enabled = true, FolderName = "MedusaHubV57", FileName = "MainConfig" }
 })
 
--- [ 5. SCRIPTS COMBAT (MOT POUR MOT) ] --
+-- [ 5. NOUVEAU BAT AIMBOT (MOT POUR MOT) ] --
 
--- ─── MELEE AIMBOT (CEBO SYSTEM) ───
-local Cebo = { Conn = nil, Circle = nil, Align = nil, Attach = nil }
+local function getBat()
+    local char = LocalPlayer.Character; if not char then return nil end
+    local tool = char:FindFirstChildWhichIsA("Tool")
+    if tool and tool.Name == "Bat" then return tool end
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    if bp then local bt = bp:FindFirstChild("Bat"); if bt then return bt end end
+    return nil
+end
 
-local function startMeleeAimbot()
-    local char = Player.Character or Player.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    Cebo.Attach = Instance.new("Attachment", hrp)
-    Cebo.Align = Instance.new("AlignOrientation", hrp)
-    Cebo.Align.Attachment0 = Cebo.Attach
-    Cebo.Align.Mode = Enum.OrientationAlignmentMode.OneAttachment
-    Cebo.Align.RigidityEnabled = true
-    Cebo.Circle = Instance.new("Part")
-    Cebo.Circle.Shape = Enum.PartType.Cylinder
-    Cebo.Circle.Material = Enum.Material.Neon
-    Cebo.Circle.Size = Vector3.new(0.05, 14.5, 14.5)
-    Cebo.Circle.Color = Color3.new(1, 0, 0)
-    Cebo.Circle.CanCollide = false
-    Cebo.Circle.Massless = true
-    Cebo.Circle.Parent = workspace
-    local weld = Instance.new("Weld")
-    weld.Part0 = hrp
-    weld.Part1 = Cebo.Circle
-    weld.C0 = CFrame.new(0, -1, 0) * CFrame.Angles(0, 0, math.rad(90))
-    weld.Parent = Cebo.Circle
-    Cebo.Conn = RunService.RenderStepped:Connect(function()
-        local target, dmin = nil, 7.25
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                local d = (p.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
-                if d <= dmin then target, dmin = p.Character.HumanoidRootPart, d end
+local function findNearestEnemy(myHRP)
+    local nearest, nearestDist, nearestTorso = nil, math.huge, nil
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local eh    = p.Character:FindFirstChild("HumanoidRootPart")
+            local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+            local hum   = p.Character:FindFirstChildOfClass("Humanoid")
+            if eh and hum and hum.Health > 0 then
+                local d = (eh.Position - myHRP.Position).Magnitude
+                if d < nearestDist then nearestDist=d; nearest=eh; nearestTorso=torso or eh end
             end
         end
-        if target then
-            char.Humanoid.AutoRotate = false
-            Cebo.Align.Enabled = true
-            Cebo.Align.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(target.Position.X, hrp.Position.Y, target.Position.Z))
-            local t = char:FindFirstChild("Bat") or char:FindFirstChild("Medusa")
-            if t then t:Activate() end
+    end
+    return nearest, nearestDist, nearestTorso
+end
+
+local function startBatAimbot()
+    if Connections.batAimbot then return end
+    Connections.batAimbot = RunService.Heartbeat:Connect(function()
+        if not Enabled.BatAimbot then return end
+        local c = LocalPlayer.Character; if not c then return end
+        local h = c:FindFirstChild("HumanoidRootPart")
+        local hum = c:FindFirstChildOfClass("Humanoid")
+        if not h or not hum then return end
+        local bat = getBat()
+        if not bat then return end -- only run if bat exists, but don't force equip
+        local target, dist, torso = findNearestEnemy(h)
+        if not target or not torso then return end
+        local targetVel = torso.AssemblyLinearVelocity
+        local dir = torso.Position - h.Position
+        local flatDir = Vector3.new(dir.X, 0, dir.Z)
+        local flatDist = flatDir.Magnitude
+        local timeToReach = flatDist / 80
+        local predictedPos = torso.Position + targetVel * timeToReach
+        local spd = 58
+        if flatDist > 1 then
+            local moveDir = Vector3.new(predictedPos.X-h.Position.X, 0, predictedPos.Z-h.Position.Z).Unit
+            local yDiff = torso.Position.Y - h.Position.Y
+            local ySpeed = math.abs(yDiff) > 0.5 and math.clamp(yDiff*8, -100, 100) or targetVel.Y
+            h.AssemblyLinearVelocity = Vector3.new(moveDir.X*spd, ySpeed, moveDir.Z*spd)
         else
-            Cebo.Align.Enabled = false
-            char.Humanoid.AutoRotate = true
+            h.AssemblyLinearVelocity = Vector3.new(targetVel.X, targetVel.Y, targetVel.Z)
         end
     end)
 end
 
-local function stopMeleeAimbot()
-    if Cebo.Conn   then Cebo.Conn:Disconnect()   Cebo.Conn   = nil end
-    if Cebo.Circle then Cebo.Circle:Destroy()     Cebo.Circle = nil end
-    if Cebo.Align  then Cebo.Align:Destroy()      Cebo.Align  = nil end
-    if Cebo.Attach then Cebo.Attach:Destroy()     Cebo.Attach = nil end
-    if Player.Character and Player.Character:FindFirstChild("Humanoid") then
-        Player.Character.Humanoid.AutoRotate = true
-    end
+local function stopBatAimbot()
+    if Connections.batAimbot then Connections.batAimbot:Disconnect(); Connections.batAimbot = nil end
 end
 
 -- ─── ANTI RAGDOLL V1 ───
@@ -489,7 +496,6 @@ end
 
 -- [ 7. SCRIPTS VISUELS (MOT POUR MOT) ] --
 
--- ─── X-RAY ───
 local originalTransparency = {}
 local function enableXRay()
     pcall(function()
@@ -510,7 +516,6 @@ local function disableXRay()
     originalTransparency = {}
 end
 
--- ─── ESP & OPTIMIZER ───
 local function CreateBoxESP(p)
     if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = p.Character.HumanoidRootPart
@@ -535,7 +540,7 @@ local function ApplyOptimizer(state)
     else Lighting.GlobalShadows = true end
 end
 
--- [ 8. PANELS AMOVIBLES (CONFIGURATION MOBILE SAFE) ] --
+-- [ 8. PANELS AMOVIBLES ] --
 local PanelGui = Instance.new("ScreenGui", lp.PlayerGui)
 PanelGui.Name = "MedusaPanels"
 
@@ -557,15 +562,22 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     btn.Size = UDim2.new(1, 0, 1, 0); btn.BackgroundTransparency = 1; btn.Font = "GothamBold"; btn.TextSize = 11; btn.TextColor3 = Color3.new(1,1,1)
     
     local function updateVisual(val)
-        btn.Text = name.."\n"..(val and "[ ACTIVE ]" or "[ INACTIVE ]")
-        btn.TextColor3 = val and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 105, 180)
+        if name == "FREEZE" then
+            btn.Text = "FREEZE\n"..(val and "ON" or "OFF")
+            btn.TextColor3 = val and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+            f.BackgroundColor3 = val and Color3.fromRGB(120, 20, 20) or Color3.fromRGB(50, 10, 10)
+        else
+            btn.Text = name.."\n"..(val and "[ ACTIVE ]" or "[ INACTIVE ]")
+            btn.TextColor3 = val and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 105, 180)
+        end
     end
     
     btn.MouseButton1Click:Connect(function()
         local currentVal
-        if name == "BAT-AIM" then currentVal = cfg.meleeAimbot
+        if name == "BAT-AIM" then currentVal = Enabled.BatAimbot
         elseif name == "AUTO-RIGHT" then currentVal = Config.AutoRight
-        else currentVal = Config.AutoLeft end
+        elseif name == "AUTO-LEFT" then currentVal = Config.AutoLeft
+        elseif name == "FREEZE" then currentVal = lagActive end
         
         local newState = not currentVal
         toggleFunc(newState)
@@ -576,10 +588,16 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     return function(val) updateVisual(val) end
 end
 
--- BAT-AIM à GAUCHE (Safe zone mobile)
-local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0, 250), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
+local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0, 250), function(v) 
+    Enabled.BatAimbot = v 
+    if v then startBatAimbot() else stopBatAimbot() end 
+end, Enabled.BatAimbot)
 
--- AUTO-RIGHT et AUTO-LEFT à DROITE (Remontés pour ne pas gêner le SAUT)
+local updateLagPanel = CreateMiniPanel("FREEZE", UDim2.new(0, 20, 0, 310), function(v) 
+    lagActive = v 
+    workspace:SetAttribute("CH_FREEZE", v) 
+end, lagActive)
+
 local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(1, -150, 0, 50), function(v) ToggleAutoRight(v) end, Config.AutoRight)
 local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(1, -150, 0, 110), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
 
@@ -591,44 +609,29 @@ local TabMove = Window:CreateTab("MOUVEMENT")
 local TabVisuals = Window:CreateTab("VISUELS")
 local TabSettings = Window:CreateTab("PARAMÈTRES")
 
--- COMBAT
 local MeleeToggle = TabCombat:CreateToggle({
-    Name = "Cebo Melee Aimbot", 
+    Name = "New Bat Aimbot", 
     CurrentValue = false, 
     Flag = "MeleeAimbot", 
     Callback = function(v) 
-        cfg.meleeAimbot = v 
-        if v then startMeleeAimbot() else stopMeleeAimbot() end 
+        Enabled.BatAimbot = v 
+        if v then startBatAimbot() else stopBatAimbot() end 
         updateBatPanel(v)
     end
 })
-TabCombat:CreateKeybind({
-    Name = "Bind Aimbot", CurrentKeybind = "F", Flag = "BF", 
-    Callback = function() MeleeToggle:Set(not cfg.meleeAimbot) end
-})
 
-local RagdollToggle = TabCombat:CreateToggle({
+TabCombat:CreateToggle({
     Name = "Anti-Ragdoll v1", 
     CurrentValue = false, 
     Flag = "AntiRagdoll", 
     Callback = function(v) cfg.antiRagdoll = v if v then startAntiRagdoll() else stopAntiRagdoll() end end
 })
-TabCombat:CreateKeybind({
-    Name = "Bind Anti-Ragdoll", CurrentKeybind = "G", Flag = "BG", 
-    Callback = function() RagdollToggle:Set(not cfg.antiRagdoll) end
-})
 
--- AUTO-FARM
 local RightToggle = TabFarm:CreateToggle({
     Name = "Auto Right Path", CurrentValue = false, Flag = "AR", 
     Callback = function(v) ToggleAutoRight(v) updateRightPanel(v) end
 })
 ToggleFunctions["AutoRight"] = function(v) RightToggle:Set(v) updateRightPanel(v) end
-
-TabFarm:CreateKeybind({
-    Name = "Bind Auto Right", CurrentKeybind = "H", Flag = "BR", 
-    Callback = function() RightToggle:Set(not Config.AutoRight) end
-})
 
 local LeftToggle = TabFarm:CreateToggle({
     Name = "Auto Left Path", CurrentValue = false, Flag = "AL", 
@@ -636,31 +639,16 @@ local LeftToggle = TabFarm:CreateToggle({
 })
 ToggleFunctions["AutoLeft"] = function(v) LeftToggle:Set(v) updateLeftPanel(v) end
 
-TabFarm:CreateKeybind({
-    Name = "Bind Auto Left", CurrentKeybind = "J", Flag = "BL", 
-    Callback = function() LeftToggle:Set(not Config.AutoLeft) end
-})
-
--- MOUVEMENT
-local SpeedToggle = TabMove:CreateToggle({
+TabMove:CreateToggle({
     Name = "Speed Boost (57)", CurrentValue = false, Flag = "Spd", 
     Callback = function(v) cfg.speed = v end
 })
-TabMove:CreateKeybind({
-    Name = "Bind Speed", CurrentKeybind = "Q", Flag = "BQ", 
-    Callback = function() SpeedToggle:Set(not cfg.speed) end
-})
 
-local JumpToggle = TabMove:CreateToggle({
+TabMove:CreateToggle({
     Name = "Infinite Jump", CurrentValue = false, Flag = "IJ", 
     Callback = function(v) cfg.infJump = v end
 })
-TabMove:CreateKeybind({
-    Name = "Bind Jump", CurrentKeybind = "C", Flag = "BC", 
-    Callback = function() JumpToggle:Set(not cfg.infJump) end
-})
 
--- VISUELS
 TabVisuals:CreateToggle({
     Name = "ESP Anti-Invis", CurrentValue = false, Flag = "ESP", 
     Callback = function(v) cfg.esp = v end
@@ -671,7 +659,6 @@ TabVisuals:CreateToggle({
     Callback = function(v) cfg.xray = v if v then enableXRay() else disableXRay() end end
 })
 
--- PARAMÈTRES
 TabSettings:CreateToggle({
     Name = "FPS Booster (Optimizer)", CurrentValue = false, Flag = "Opt", 
     Callback = function(v) cfg.optimizer = v ApplyOptimizer(v) end
@@ -682,7 +669,7 @@ TabSettings:CreateToggle({
     Callback = function(v) cfg.fastSteal = v end
 })
 
--- [ 9. STATS UI ET BOUCLE FINALE ] --
+-- [ 10. STATS UI ET BOUCLE FINALE ] --
 local sg = Instance.new("ScreenGui", lp.PlayerGui); sg.Name = "MedusaStatsUI"
 local f = Instance.new("Frame", sg); f.Size = UDim2.new(0, 180, 0, 55); f.Position = UDim2.new(0.5, -90, 0, 10); f.BackgroundColor3 = Color3.new(0,0,0); f.Active = false
 MakeDraggable(f)
@@ -695,7 +682,6 @@ RunService.RenderStepped:Connect(function()
     local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValueString():match("%d+")
     t.Text = "  MEDUSA V57\n  FPS: "..fps.." | PING: "..ping.."ms"
     
-    -- MISE À JOUR INDICATEUR VITESSE (0 sp)
     if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
         local velocity = lp.Character.HumanoidRootPart.Velocity
         local speed = math.floor(Vector3.new(velocity.X, 0, velocity.Z).Magnitude)
