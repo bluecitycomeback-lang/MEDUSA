@@ -714,9 +714,8 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
--- LOGIQUE OPTIMISÉE FAST STEAL + ESP + INTERVALLES
 task.spawn(function()
-    while task.wait(0.1) do -- Boucle plus rapide (0.1s au lieu de 0.3s)
+    while task.wait(0.1) do
         if cfg.esp then
             for _, p in pairs(Players:GetPlayers()) do if p ~= lp then CreateBoxESP(p) end end
         else
@@ -727,19 +726,21 @@ task.spawn(function()
             end
         end
         
-        -- FAST STEAL ULTIME
+        -- FAST STEAL CORRIGÉ (Ulitise fireproximityprompt si disponible)
         if cfg.fastSteal then
             for _, v in pairs(workspace:GetDescendants()) do 
                 if v:IsA("ProximityPrompt") then 
-                    v.HoldDuration = 0 -- Pas de temps d'attente
-                    v.ClickablePrompt = true -- Toujours cliquable
+                    v.HoldDuration = 0 
                     
-                    -- Force l'interaction si le joueur est très proche (Auto-Interact)
                     if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-                        local dist = (v.Parent:IsA("BasePart") and (v.Parent.Position - lp.Character.HumanoidRootPart.Position).Magnitude) or 100
-                        if dist < v.MaxActivationDistance then
-                            ProximityPromptService:NotifyPromptTriggered(v, Player)
-                            fireproximityprompt(v) -- Supporte la plupart des executeurs
+                        local part = v.Parent
+                        if part and part:IsA("BasePart") then
+                            local dist = (part.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+                            if dist < v.MaxActivationDistance then
+                                if fireproximityprompt then
+                                    fireproximityprompt(v)
+                                end
+                            end
                         end
                     end
                 end 
