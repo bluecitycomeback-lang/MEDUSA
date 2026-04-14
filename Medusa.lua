@@ -468,33 +468,38 @@ local function ApplyOptimizer(state)
     else Lighting.GlobalShadows = true end
 end
 
--- [ 8. NOUVEAUX PANELS AMOVIBLES ] --
+-- [ 8. PANELS AMOVIBLES (OPTIMISÉS MOBILE) ] --
 local PanelGui = Instance.new("ScreenGui", lp.PlayerGui)
 PanelGui.Name = "MedusaPanels"
 
 local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     local f = Instance.new("Frame", PanelGui)
     f.Name = name.."Panel"
-    f.Size = UDim2.new(0, 110, 0, 30)
+    f.Size = UDim2.new(0, 130, 0, 40) -- Un peu plus grand pour mobile
     f.Position = pos
-    f.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    f.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     f.BorderSizePixel = 0
     f.Active = true
-    f.Draggable = true -- Active le mouvement libre du panel
+    f.Draggable = true -- Entièrement déplaçable
     
-    local corner = Instance.new("UICorner", f); corner.CornerRadius = UDim.new(0, 4)
-    local stroke = Instance.new("UIStroke", f); stroke.Color = Color3.fromRGB(255, 105, 180); stroke.Thickness = 1.2
+    local corner = Instance.new("UICorner", f); corner.CornerRadius = UDim.new(0, 6)
+    local stroke = Instance.new("UIStroke", f); stroke.Color = Color3.fromRGB(255, 105, 180); stroke.Thickness = 1.8
 
     local btn = Instance.new("TextButton", f)
-    btn.Size = UDim2.new(1, 0, 1, 0); btn.BackgroundTransparency = 1; btn.Font = "GothamBold"; btn.TextSize = 10; btn.TextColor3 = Color3.new(1,1,1)
+    btn.Size = UDim2.new(1, 0, 1, 0); btn.BackgroundTransparency = 1; btn.Font = "GothamBold"; btn.TextSize = 11; btn.TextColor3 = Color3.new(1,1,1)
     
     local function updateVisual(val)
-        btn.Text = name..": "..(val and "ON" or "OFF")
+        btn.Text = name.."\n"..(val and "[ ACTIVE ]" or "[ INACTIVE ]")
         btn.TextColor3 = val and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 105, 180)
     end
     
     btn.MouseButton1Click:Connect(function()
-        local newState = not (name == "BAT-AIM" and cfg.meleeAimbot or (name == "AUTO-RIGHT" and Config.AutoRight or Config.AutoLeft))
+        local currentVal
+        if name == "BAT-AIM" then currentVal = cfg.meleeAimbot
+        elseif name == "AUTO-RIGHT" then currentVal = Config.AutoRight
+        else currentVal = Config.AutoLeft end
+        
+        local newState = not currentVal
         toggleFunc(newState)
         updateVisual(newState)
     end)
@@ -503,9 +508,10 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     return function(val) updateVisual(val) end
 end
 
-local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(0, 20, 0.4, 0), function(v) ToggleAutoRight(v) end, Config.AutoRight)
-local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(0, 20, 0.45, 0), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
-local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0.5, 0), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
+-- Espacement vertical de 50 pixels pour éviter que ça se touche sur mobile
+local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(0, 20, 0, 150), function(v) ToggleAutoRight(v) end, Config.AutoRight)
+local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(0, 20, 0, 200), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
+local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0, 250), function(v) cfg.meleeAimbot = v if v then startMeleeAimbot() else stopMeleeAimbot() end end, cfg.meleeAimbot)
 
 -- [ 9. ONGLETS ET LOGIQUE INTERFACE ] --
 
