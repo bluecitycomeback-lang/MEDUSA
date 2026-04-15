@@ -18,7 +18,7 @@ local cfg = {
     antiRagdoll = false, 
     fastSteal = false, 
     esp = false, 
-    baseEsp = false, -- Ajout spécifique
+    baseEsp = false,
     xray = false,
     infJump = false, 
     optimizer = false,
@@ -94,7 +94,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- [[ ESP BASE TIMER ADDITION ]] --
+-- [[ LOGIQUE ESP BASE TIMER ]] --
 local function createBaseESP(base)
     local claimData = base:FindFirstChild("ClaimData")
     local timerVal = claimData and claimData:FindFirstChild("Timer")
@@ -129,6 +129,36 @@ local function toggleBaseESP(val)
         if p then for _, b in pairs(p:GetChildren()) do createBaseESP(b) end end
     else
         for _, v in pairs(workspace:GetDescendants()) do if v.Name == "MedusaBaseTimer" then v:Destroy() end end
+    end
+end
+
+-- [[ INFINITE JUMP ]] --
+UserInputService.JumpRequest:Connect(function()
+    if cfg.infJump then
+        local hum = GetHumanoid()
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- [[ XRAY LOGIC ]] --
+local function toggleXray(v)
+    cfg.xray = v
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and not obj:IsDescendantOf(lp.Character) then
+            if v then
+                if not obj:FindFirstChild("MedusaXray") then
+                    local originalTrans = Instance.new("NumberValue", obj)
+                    originalTrans.Name = "MedusaXray"
+                    originalTrans.Value = obj.Transparency
+                    obj.Transparency = 0.5
+                end
+            else
+                if obj:FindFirstChild("MedusaXray") then
+                    obj.Transparency = obj.MedusaXray.Value
+                    obj.MedusaXray:Destroy()
+                end
+            end
+        end
     end
 end
 
@@ -459,9 +489,23 @@ TabCombat:CreateToggle({Name = "Dual Aim (Laser/Web)", CurrentValue = false, Cal
 TabCombat:CreateToggle({Name = "Bat Aimbot", CurrentValue = false, Callback = function(v) Enabled.BatAimbot = v if v then startBatAimbot() else stopBatAimbot() end updateBatPanel(v) end})
 TabFarm:CreateToggle({Name = "Auto Right", CurrentValue = false, Callback = function(v) Config.AutoRight = v; if v then StartAutoWalk("right") else StopAutoWalk() end updateRightPanel(v) end})
 TabFarm:CreateToggle({Name = "Auto Left", CurrentValue = false, Callback = function(v) Config.AutoLeft = v; if v then StartAutoWalk("left") else StopAutoWalk() end updateLeftPanel(v) end})
+
 TabMove:CreateToggle({Name = "Speed Boost", CurrentValue = false, Callback = function(v) cfg.speed = v end})
-TabSettings:CreateToggle({Name = "Instant Steal", CurrentValue = false, Callback = function(v) cfg.fastSteal = v end})
+TabMove:CreateToggle({Name = "Infinite Jump", CurrentValue = false, Callback = function(v) cfg.infJump = v end})
+
+TabSettings:CreateToggle({Name = "Player ESP", CurrentValue = false, Callback = function(v) cfg.esp = v end})
 TabSettings:CreateToggle({Name = "Base Timer ESP", CurrentValue = false, Callback = function(v) toggleBaseESP(v) end})
+TabSettings:CreateToggle({Name = "X-Ray", CurrentValue = false, Callback = function(v) toggleXray(v) end})
+TabSettings:CreateToggle({Name = "Instant Steal", CurrentValue = false, Callback = function(v) cfg.fastSteal = v end})
+TabSettings:CreateButton({Name = "Optimizer (Boost FPS)", Callback = function()
+    for _, v in pairs(game:GetDescendants()) do
+        if v:IsA("BasePart") and not v:IsDescendantOf(lp.Character) then
+            v.Material = Enum.Material.SmoothPlastic
+        elseif v:IsA("Decal") or v:IsA("Texture") then
+            v:Destroy()
+        end
+    end
+end})
 
 -- [ 11. STATS UI & BOUCLE FINALE ] --
 local sg = Instance.new("ScreenGui", lp.PlayerGui); sg.Name = "MedusaStatsUI"; sg.ResetOnSpawn = false
