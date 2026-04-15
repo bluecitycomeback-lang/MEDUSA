@@ -714,9 +714,9 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
--- LOGIQUE OPTIMISÉE FAST STEAL + ESP + INTERVALLES
+-- LOGIQUE OPTIMISÉE FAST STEAL + ESP
 task.spawn(function()
-    while task.wait(0.1) do -- Boucle plus rapide (0.1s au lieu de 0.3s)
+    while task.wait(0.2) do 
         if cfg.esp then
             for _, p in pairs(Players:GetPlayers()) do if p ~= lp then CreateBoxESP(p) end end
         else
@@ -727,12 +727,11 @@ task.spawn(function()
             end
         end
         
-        -- FAST STEAL ULTIME
+        -- FAST STEAL (UNIQUEMENT TEMPS D'ATTENTE)
         if cfg.fastSteal then
             for _, v in pairs(workspace:GetDescendants()) do 
                 if v:IsA("ProximityPrompt") then 
-                    v.HoldDuration = 0 -- Pas de temps d'attente
-                    v.ClickablePrompt = true -- Toujours cliquable
+                    v.HoldDuration = 0 
                 end 
             end
         end
