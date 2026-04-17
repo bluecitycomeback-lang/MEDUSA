@@ -739,3 +739,259 @@ task.spawn(function()
 end)
 
 Rayfield:LoadConfiguration()
+
+-- [[ BEST PET ESP INTEGRATION ]] --
+
+local Workspace = game:GetService("Workspace")
+
+-- Estado global
+getgenv().BestPetESP = getgenv().BestPetESP or {
+    active = false,
+    loop = nil,
+    currentESP = nil
+}
+
+-- Parse valor (ex: "1.5K/s" -> 1500)
+local function parseValue(text)
+    text = tostring(text or ""):gsub("%s", "")
+    local num, suffix = text:match("([%d%.]+)([KkMmBbTt]?)")
+    if not num then return 0 end
+    num = tonumber(num) or 0
+    local multipliers = {K=1e3, M=1e6, B=1e9, T=1e12}
+    local mult = multipliers[(suffix or ""):upper()] or 1
+    return num * mult
+end
+
+-- Criar ESP Billboard
+local function createESP(part, displayText, valueText)
+    if getgenv().BestPetESP.currentESP then
+        pcall(function() getgenv().BestPetESP.currentESP:Destroy() end)
+    end
+    
+    if not part then 
+        print("[ESP] âš ï¸ Part invÃ¡lido para criar ESP")
+        return 
+    end
+    
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "BestPetESP"
+    bb.Size = UDim2.new(0, 200, 0, 50)
+    bb.AlwaysOnTop = true
+    bb.StudsOffset = Vector3.new(0, 3, 0)
+    bb.Adornee = part
+    bb.Parent = CoreGui
+    
+    local name = Instance.new("TextLabel", bb)
+    name.Size = UDim2.new(1, 0, 0, 25)
+    name.BackgroundTransparency = 1
+    name.TextScaled = true
+    name.Font = Enum.Font.GothamBold
+    name.Text = displayText
+    name.TextColor3 = Color3.fromRGB(255, 255, 0)
+    name.TextStrokeTransparency = 0.5
+    
+    local value = Instance.new("TextLabel", bb)
+    value.Size = UDim2.new(1, 0, 0, 25)
+    value.Position = UDim2.new(0, 0, 0, 25)
+    value.BackgroundTransparency = 1
+    value.TextScaled = true
+    value.Font = Enum.Font.GothamBold
+    value.Text = valueText
+    value.TextColor3 = Color3.fromRGB(0, 255, 100)
+    value.TextStrokeTransparency = 0.5
+    
+    getgenv().BestPetESP.currentESP = bb
+    print(string.format("[ESP] âœ… ESP criado: %s | %s", displayText, valueText))
+end
+
+-- Loop de detecÃ§Ã£o
+local function startESP()
+    if getgenv().BestPetESP.active then 
+        print("[ESP] JÃ¡ estÃ¡ ativo!")
+        return 
+    end
+    getgenv().BestPetESP.active = true
+    print("[ESP] ðŸš€ Iniciado - Procurando todos FastOverheadTemplate em Debris")
+    
+    getgenv().BestPetESP.loop = task.spawn(function()
+        while getgenv().BestPetESP.active do
+            local debris = Workspace:FindFirstChild("Debris")
+            if not debris then
+                warn("[ESP] Debris nÃ£o encontrado no Workspace!")
+                task.wait(0.5)
+                continue
+            end
+            
+            local bestPet = {value = -1, part = nil, text = "", display = "", template = nil}
+            local templatesFound = 0
+            
+            -- Procura TODOS os FastOverheadTemplate dentro de Debris
+            for _, template in ipairs(debris:GetChildren()) do
+                if template.Name == "FastOverheadTemplate" then
+                    templatesFound = templatesFound + 1
+                    print(string.format("[ESP] ðŸ“¦ Template #%d encontrado", templatesFound))
+                    
+                    -- Procura SurfaceGui dentro do template
+                    local surfaceGui = template:FindFirstChildOfClass("SurfaceGui")
+                    if not surfaceGui then
+                        print(string.format("[ESP] âš ï¸ Template #%d nÃ£o tem SurfaceGui", templatesFound))
+                        continue
+                    end
+                    
+                    print(string.format("[ESP] âœ… SurfaceGui encontrado no Template #%d", templatesFound))
+                    
+                    -- Procura Generation dentro do SurfaceGui (recursivo)
+                    local genLabel = surfaceGui:FindFirstChild("Generation", true)
+                    if not genLabel or not genLabel:IsA("TextLabel") then
+                        print(string.format("[ESP] âš ï¸ Template #%d nÃ£o tem Generation TextLabel", templatesFound))
+                        continue
+                    end
+                    
+                    local text = genLabel.Text or ""
+                    print(string.format("[ESP] ðŸ’° Template #%d | Generation: '%s'", templatesFound, text))
+                    
+                    -- Valida se tem valor
+                    if text ~= "" and (text:find("/s") or text:find("K") or text:find("M") or text:find("B")) then
+                        local val = parseValue(text)
+                        print(string.format("[ESP] ðŸ“Š Template #%d | Valor: %.2f", templatesFound, val))
+                        
+                        if val > bestPet.value then
+                            -- Pega o Adornee (parte 3D onde o GUI estÃ¡ anexado)
+                            local targetPart = surfaceGui.Adornee
+                            if targetPart and targetPart:IsA("BasePart") then
+                                local displayName = surfaceGui:FindFirstChild("DisplayName", true)
+                                bestPet = {
+                                    part = targetPart,
+                                    value = val,
+                                    text = text,
+                                    display = displayName and displayName.Text or "Pet",
+                                    template = template
+                                }
+                                print(string.format("[ESP] ðŸŽ¯ NOVO BEST PET! Template #%d | %s | %.2f", templatesFound, bestPet.display, val))
+                            else
+                                print(string.format("[ESP] âš ï¸ Template #%d | SurfaceGui sem Adornee vÃ¡lido", templatesFound))
+                            end
+                        end
+                    else
+                        print(string.format("[ESP] âš ï¸ Template #%d | Generation sem formato vÃ¡lido", templatesFound))
+                    end
+                end
+            end
+            
+            print(string.format("[ESP] ðŸ“‹ Scan completo: %d FastOverheadTemplate encontrados", templatesFound))
+            
+            -- Cria ESP no melhor pet
+            if bestPet.part and bestPet.part.Parent then
+                print(string.format("[ESP] ðŸ† MELHOR PET: %s (%s) com valor %.2f", bestPet.display, bestPet.text, bestPet.value))
+                createESP(bestPet.part, bestPet.display, bestPet.text)
+            else
+                print("[ESP] âŒ Nenhum pet vÃ¡lido encontrado para ESP")
+            end
+            
+            task.wait(0.5)
+        end
+        
+        -- Limpa ESP ao parar
+        if getgenv().BestPetESP.currentESP then
+            pcall(function() getgenv().BestPetESP.currentESP:Destroy() end)
+            getgenv().BestPetESP.currentESP = nil
+        end
+        print("[ESP] ðŸ›‘ Finalizado")
+    end)
+end
+
+local function stopESP()
+    getgenv().BestPetESP.active = false
+    print("[ESP] ðŸ›‘ Parando...")
+    
+    if getgenv().BestPetESP.loop then
+        task.cancel(getgenv().BestPetESP.loop)
+    end
+    if getgenv().BestPetESP.currentESP then
+        pcall(function() getgenv().BestPetESP.currentESP:Destroy() end)
+        getgenv().BestPetESP.currentESP = nil
+    end
+    
+    print("[ESP] âœ… Desativado")
+end
+
+-- Remover GUI antiga
+local old = CoreGui:FindFirstChild("SimplePetESP")
+if old then old:Destroy() end
+
+-- Criar GUI simples
+local gui = Instance.new("ScreenGui")
+gui.Name = "SimplePetESP"
+gui.ResetOnSpawn = false
+gui.Parent = CoreGui
+
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 200, 0, 80)
+frame.Position = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+frame.BorderSizePixel = 0
+frame.Active = true
+
+-- Arrastar
+local dragging, dragStart, startPos
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+    end
+end)
+frame.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+frame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+-- TÃ­tulo
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, -10, 0, 25)
+title.Position = UDim2.new(0, 5, 0, 5)
+title.BackgroundTransparency = 1
+title.Text = "Best Pet ESP"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+
+-- BotÃ£o ON/OFF
+local btn = Instance.new("TextButton", frame)
+btn.Size = UDim2.new(1, -20, 0, 35)
+btn.Position = UDim2.new(0, 10, 0, 35)
+btn.Text = "LIGAR ESP"
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 18
+btn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+btn.TextColor3 = Color3.fromRGB(0, 0, 0)
+btn.BorderSizePixel = 0
+
+local corner = Instance.new("UICorner", btn)
+corner.CornerRadius = UDim.new(0, 6)
+
+btn.MouseButton1Click:Connect(function()
+    if getgenv().BestPetESP.active then
+        stopESP()
+        btn.Text = "LIGAR ESP"
+        btn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+    else
+        startESP()
+        btn.Text = "DESLIGAR ESP"
+        btn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+    end
+end)
+
+-- Adicionar canto arredondado no frame
+local frameCorner = Instance.new("UICorner", frame)
+frameCorner.CornerRadius = UDim.new(0, 8)
