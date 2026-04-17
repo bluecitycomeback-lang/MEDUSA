@@ -10,6 +10,7 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
 
 -- [ 1. CONFIGURATION & VARIABLES GLOBALES ] --
 local cfg = {
@@ -97,7 +98,7 @@ end)
 
 -- [ 3. NETTOYAGE UI ] --
 for _, v in pairs(lp.PlayerGui:GetChildren()) do
-    if v.Name == "Rayfield" or v.Name == "MedusaStatsUI" or v.Name == "MedusaPanels" then v:Destroy() end
+    if v.Name == "Rayfield" or v.Name == "MedusaStatsUI" or v.Name == "MedusaPanels" or v.Name == "TokinuHubGalaxy" then v:Destroy() end
 end
 
 -- [ FONCTION DE DRAG PERSONNALISÉE ] --
@@ -166,6 +167,117 @@ local function UpdateTimerESP()
         end
     end
 end
+
+-- ==========================================
+--    INTEGRATION TOKINU HUB (DESYNC)
+-- ==========================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TokinuHubGalaxy"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = lp:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 200, 0, 270)
+MainFrame.Position = UDim2.new(0, 40, 0, 60)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+MainFrame.BackgroundTransparency = 0.2
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Thickness = 1
+UIStroke.Color = Color3.fromRGB(180, 180, 200)
+UIStroke.Transparency = 0.7
+UIStroke.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 28)
+Title.Position = UDim2.new(0, 8, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Tokinu Hub"
+Title.Font = Enum.Font.GothamMedium
+Title.TextSize = 16
+Title.TextColor3 = Color3.fromRGB(220, 220, 240)
+Title.Parent = MainFrame
+
+local Footer = Instance.new("TextLabel")
+Footer.Size = UDim2.new(1, -20, 0, 16)
+Footer.Position = UDim2.new(0, 10, 1, -22)
+Footer.BackgroundTransparency = 1
+Footer.Text = "discord.gg/tokinu"
+Footer.TextColor3 = Color3.fromRGB(180, 180, 200)
+Footer.Font = Enum.Font.Gotham
+Footer.TextSize = 11
+Footer.TextXAlignment = Enum.TextXAlignment.Center
+Footer.Parent = MainFrame
+
+local function CreateTokinuButton(name, yOffset, defaultText)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -20, 0, 32)
+    button.Position = UDim2.new(0, 10, 0, yOffset)
+    button.BackgroundColor3 = Color3.fromRGB(100, 100, 120)
+    button.BackgroundTransparency = 0.5
+    button.Text = defaultText or (name .. ": OFF")
+    button.Font = Enum.Font.GothamMedium
+    button.TextSize = 14
+    button.TextColor3 = Color3.fromRGB(240, 240, 255)
+    button.Parent = MainFrame
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = button
+    return button
+end
+
+local SettingsFrame = Instance.new("Frame")
+SettingsFrame.Size = UDim2.new(1, -20, 0, 65)
+SettingsFrame.Position = UDim2.new(0, 10, 0, 154)
+SettingsFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+SettingsFrame.BackgroundTransparency = 0.3
+SettingsFrame.Parent = MainFrame
+local cornerS = Instance.new("UICorner"); cornerS.CornerRadius = UDim.new(0, 8); cornerS.Parent = SettingsFrame
+
+local function CreateSettingRow(labelText, defaultValue, yOffset)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.5, -5, 0, 22); label.Position = UDim2.new(0, 5, 0, yOffset); label.BackgroundTransparency = 1
+    label.Text = labelText; label.Font = Enum.Font.Gotham; label.TextSize = 12; label.TextColor3 = Color3.fromRGB(220, 220, 240); label.Parent = SettingsFrame
+    local textbox = Instance.new("TextBox")
+    textbox.Size = UDim2.new(0.5, -10, 0, 22); textbox.Position = UDim2.new(0.5, 0, 0, yOffset); textbox.BackgroundColor3 = Color3.fromRGB(60, 60, 80);
+    textbox.Text = tostring(defaultValue); textbox.TextColor3 = Color3.fromRGB(240, 240, 255); textbox.Font = Enum.Font.Gotham; textbox.TextSize = 12; textbox.Parent = SettingsFrame
+    return textbox
+end
+
+local speedBox = CreateSettingRow("Speed:", 27, 5)
+local jumpBox = CreateSettingRow("Jump:", 50, 32)
+local DesyncButton = CreateTokinuButton("Desync", 40, "Desync: OFF")
+local SpeedButton  = CreateTokinuButton("Speed",  78, "Speed: ON")
+local UnwalkButton = CreateTokinuButton("Unwalk", 116, "Unwalk: OFF")
+
+local function SetTokinuOn(btn)
+    btn.Text = btn.Text:gsub("OFF", "ON")
+    TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 150, 80), BackgroundTransparency = 0.3}):Play()
+end
+
+DesyncButton.MouseButton1Click:Connect(function()
+    SetTokinuOn(DesyncButton)
+    local char = lp.Character
+    if char and char:FindFirstChildOfClass("Humanoid") then char:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Dead) end
+end)
+
+UnwalkButton.MouseButton1Click:Connect(function()
+    SetTokinuOn(UnwalkButton)
+    local char = lp.Character
+    if char and char:FindFirstChild("Animate") then
+        pcall(function()
+            char.Animate.walk.WalkAnim.AnimationId = ""
+            char.Animate.run.RunAnim.AnimationId = ""
+        end)
+    end
+end)
 
 -- [ 4. INITIALISATION RAYFIELD ] --
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -617,22 +729,15 @@ local function CreateMiniPanel(name, pos, toggleFunc, initialValue)
     btn.Size = UDim2.new(1, 0, 1, 0); btn.BackgroundTransparency = 1; btn.Font = "GothamBold"; btn.TextSize = 11; btn.TextColor3 = Color3.new(1,1,1)
     
     local function updateVisual(val)
-        if name == "FREEZE" then
-            btn.Text = "FREEZE\n"..(val and "ON" or "OFF")
-            btn.TextColor3 = val and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
-            f.BackgroundColor3 = val and Color3.fromRGB(120, 20, 20) or Color3.fromRGB(50, 10, 10)
-        else
-            btn.Text = name.."\n"..(val and "[ ACTIVE ]" or "[ INACTIVE ]")
-            btn.TextColor3 = val and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 105, 180)
-        end
+        btn.Text = name.."\n"..(val and "[ ACTIVE ]" or "[ INACTIVE ]")
+        btn.TextColor3 = val and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 105, 180)
     end
     
     btn.MouseButton1Click:Connect(function()
         local currentVal
         if name == "BAT-AIM" then currentVal = Enabled.BatAimbot
         elseif name == "AUTO-RIGHT" then currentVal = Config.AutoRight
-        elseif name == "AUTO-LEFT" then currentVal = Config.AutoLeft
-        elseif name == "FREEZE" then currentVal = lagActive end
+        elseif name == "AUTO-LEFT" then currentVal = Config.AutoLeft end
         
         local newState = not currentVal
         toggleFunc(newState)
@@ -647,11 +752,6 @@ local updateBatPanel = CreateMiniPanel("BAT-AIM", UDim2.new(0, 20, 0, 250), func
     Enabled.BatAimbot = v 
     if v then startBatAimbot() else stopBatAimbot() end 
 end, Enabled.BatAimbot)
-
-local updateLagPanel = CreateMiniPanel("FREEZE", UDim2.new(0, 20, 0, 310), function(v) 
-    lagActive = v 
-    workspace:SetAttribute("CH_FREEZE", v) 
-end, lagActive)
 
 local updateRightPanel = CreateMiniPanel("AUTO-RIGHT", UDim2.new(1, -150, 0, 50), function(v) ToggleAutoRight(v) end, Config.AutoRight)
 local updateLeftPanel = CreateMiniPanel("AUTO-LEFT", UDim2.new(1, -150, 0, 110), function(v) ToggleAutoLeft(v) end, Config.AutoLeft)
@@ -769,8 +869,8 @@ RunService.RenderStepped:Connect(function()
     
     if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
         local velocity = lp.Character.HumanoidRootPart.Velocity
-        local speed = math.floor(Vector3.new(velocity.X, 0, velocity.Z).Magnitude)
-        speedLabel.Text = speed .. " sp"
+        local speedValue = math.floor(Vector3.new(velocity.X, 0, velocity.Z).Magnitude)
+        speedLabel.Text = speedValue .. " sp"
     end
 
     if cfg.speed and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
