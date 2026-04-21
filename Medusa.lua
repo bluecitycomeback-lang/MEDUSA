@@ -8,9 +8,10 @@ local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- =============================================
 -- [ SAUVEGARDE DES PARAMETRES ] --
@@ -39,6 +40,8 @@ local defaultConfig = {
     stealSpeed  = false,
     spamSteal   = false,
     balloonBase = false,
+    autoBlock   = true,
+    blockDelay  = 0.7,
 }
 
 local function loadConfig()
@@ -47,7 +50,6 @@ local function loadConfig()
         return game:GetService("HttpService"):JSONDecode(readfile(CONFIG_FILE))
     end)
     if ok and data then
-        -- Merge avec les defaults pour les clés manquantes
         for k, v in pairs(defaultConfig) do
             if data[k] == nil then data[k] = v end
         end
@@ -84,19 +86,7 @@ local cfg = {
 }
 
 local function persistCfg()
-    savedCfg.speed       = cfg.speed
-    savedCfg.antiRagdoll = cfg.antiRagdoll
-    savedCfg.fastSteal   = cfg.fastSteal
-    savedCfg.instSteal   = cfg.instSteal
-    savedCfg.esp         = cfg.esp
-    savedCfg.xray        = cfg.xray
-    savedCfg.infJump     = cfg.infJump
-    savedCfg.optimizer   = cfg.optimizer
-    savedCfg.timerEsp    = cfg.timerEsp
-    savedCfg.antiTrap    = cfg.antiTrap
-    savedCfg.halfTP      = cfg.halfTP
-    savedCfg.aspectRatio = cfg.aspectRatio
-    savedCfg.darkMode    = cfg.darkMode
+    for k, v in pairs(cfg) do savedCfg[k] = v end
     saveConfig(savedCfg)
 end
 
@@ -114,83 +104,144 @@ local HasBrainrotInHand = false
 local antiTrapConnection = nil
 local halfTpConnection = nil
 local aspectRatioConnection = nil
+local stretchGui = nil
+local stretchCam = nil
 
 -- =============================================
--- [ QUANTUM CLONER TP ] --
+-- [ CHIRON TP - VARIABLES ] --
 -- =============================================
-local savedPosition = nil
-local useItemRemote = nil
-local teleportRemote = nil
-local walkspeedLoop = nil
+local backpack = lp:WaitForChild("Backpack")
+local char = lp.Character or lp.CharacterAdded:Wait()
+local humanoid = char:WaitForChild("Humanoid")
+local hrpChar = char:WaitForChild("HumanoidRootPart")
 
-local function getRemotes()
-    local packages = ReplicatedStorage:FindFirstChild("Packages")
-    if not packages then return false end
-    local netFolder = packages:FindFirstChild("Net")
-    if not netFolder then return false end
-    useItemRemote  = netFolder:FindFirstChild("RE/UseItem")
-    teleportRemote = netFolder:FindFirstChild("RE/QuantumCloner/OnTeleport")
-    return useItemRemote ~= nil and teleportRemote ~= nil
-end
+lp.CharacterAdded:Connect(function(c)
+    char = c
+    humanoid = c:WaitForChild("Humanoid")
+    hrpChar = c:WaitForChild("HumanoidRootPart")
+end)
 
-local function equipItem(itemName)
-    local char = lp.Character; if not char then return false end
-    local bp = lp:FindFirstChild("Backpack"); if not bp then return false end
-    local tool = bp:FindFirstChild(itemName)
-    if tool then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then hum:EquipTool(tool); return true end
+local blockDelay = savedCfg.blockDelay or 0.7
+local minDelay = 0.1
+local maxDelay = 5.0
+local autoBlockEnabled = savedCfg.autoBlock
+local teleportKey = Enum.KeyCode.F
+local waitingForKey = false
+
+local REQUIRED_TOOL = "Flying Carpet"
+
+local spots = {
+    CFrame.new(-402.18, -6.34, 131.83) * CFrame.Angles(0, math.rad(-20.08), 0),
+    CFrame.new(-416.66, -6.34, -2.05)  * CFrame.Angles(0, math.rad(-62.89), 0),
+    CFrame.new(-329.37, -4.68, 18.12)  * CFrame.Angles(0, math.rad(-30.53), 0),
+}
+
+local function FastClick()
+    task.wait(blockDelay)
+    local cam = workspace.CurrentCamera.ViewportSize
+    local x = cam.X / 2
+    local y = cam.Y / 2 + 23
+    for _ = 1, 8 do
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true,  game, 1)
+        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+        task.wait(0.008)
     end
-    return false
 end
 
-local function saveQuantumPosition()
-    local char = lp.Character; if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    savedPosition = hrp.CFrame
-    if not useItemRemote or not teleportRemote then getRemotes() end
-    task.wait(0.1)
-    equipItem("Quantum Cloner")
-    task.wait(0.2)
-    if useItemRemote then useItemRemote:FireServer("Quantum Cloner"); task.wait(0.1) end
-    if teleportRemote then teleportRemote:FireServer("OnTeleport") end
-    if walkspeedLoop then walkspeedLoop:Disconnect(); walkspeedLoop = nil end
-    task.wait(0.1)
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        local animator = humanoid:FindFirstChildOfClass("Animator")
-        if animator then
-            for _, track in pairs(animator:GetPlayingAnimationTracks()) do track:AdjustSpeed(0) end
+local function blockPlayer(plr)
+    if not plr or plr == lp then return end
+    pcall(function() StarterGui:SetCore("PromptBlockPlayer", plr) end)
+end
+
+local function equipFlyingCarpet()
+    local tool = backpack:FindFirstChild(REQUIRED_TOOL) or char:FindFirstChild(REQUIRED_TOOL)
+    if not tool then return false end
+    if tool.Parent ~= char then
+        humanoid:EquipTool(tool)
+        repeat task.wait() until tool.Parent == char
+    end
+    return true
+end
+
+local function checkForBrainrot()
+    if not autoBlockEnabled then return false end
+    local keywords = {"brainrot","animal","monkey","dog","cat","bird"}
+    local function hasKeyword(name)
+        local n = name:lower()
+        for _, kw in ipairs(keywords) do if n:find(kw) then return true end end
+        return false
+    end
+    local function checkTools(container)
+        for _, tool in ipairs(container:GetChildren()) do
+            if tool:IsA("Tool") and hasKeyword(tool.Name) then
+                for _, other in ipairs(Players:GetPlayers()) do
+                    if other ~= lp and other.Character then
+                        local ob = other:FindFirstChild("Backpack")
+                        if ob and not ob:FindFirstChild(tool.Name) then
+                            blockPlayer(other)
+                            FastClick()
+                            task.wait(0.25)
+                            return true
+                        end
+                    end
+                end
+            end
         end
+        return false
     end
-    walkspeedLoop = RunService.Heartbeat:Connect(function()
-        local c = lp.Character
-        if c then local h = c:FindFirstChildOfClass("Humanoid"); if h and h.WalkSpeed ~= 5 then h.WalkSpeed = 5 end end
+    return checkTools(backpack) or checkTools(char)
+end
+
+local function setupBrainrotDetection()
+    checkForBrainrot()
+    backpack.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then task.wait(0.5); checkForBrainrot() end
+    end)
+    char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then task.wait(0.5); checkForBrainrot() end
+    end)
+    lp.CharacterAdded:Connect(function(newChar)
+        char = newChar
+        newChar.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then task.wait(0.5); checkForBrainrot() end
+        end)
+        task.wait(1); checkForBrainrot()
     end)
 end
 
-local function teleportToSaved()
-    if not savedPosition then return end
-    local char = lp.Character; if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    if not useItemRemote or not teleportRemote then getRemotes() end
-    equipItem("Quantum Cloner")
-    task.wait(0.2)
-    if useItemRemote then useItemRemote:FireServer("Quantum Cloner"); task.wait(0.1) end
-    task.wait(1)
-    local oldParent = hrp.Parent
-    hrp.CFrame = savedPosition
-    hrp.Parent = nil
-    task.wait(0.05)
-    hrp.Parent = oldParent
+local function teleportAll()
+    if not equipFlyingCarpet() then return end
+    local lastTarget = nil
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= lp then lastTarget = plr; break end
+    end
+    for _, spot in ipairs(spots) do
+        equipFlyingCarpet()
+        hrpChar.CFrame = spot
+        task.wait(0.12)
+    end
+    if lastTarget and autoBlockEnabled then
+        blockPlayer(lastTarget)
+        FastClick()
+    end
+end
+
+local function blockAllPlayers()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= lp then
+            blockPlayer(plr)
+            FastClick()
+            task.wait(0.25)
+        end
+    end
 end
 
 -- [ NETTOYAGE UI ] --
 for _, v in pairs(CoreGui:GetChildren()) do
-    if v.Name == "MedusaHubUI" or v.Name == "MedusaNotif" then v:Destroy() end
+    if v.Name == "MedusaHubUI" or v.Name == "MedusaNotif" or v.Name == "MedusaStretch" then v:Destroy() end
 end
 for _, v in pairs(lp.PlayerGui:GetChildren()) do
-    if v.Name == "Rayfield" or v.Name == "MedusaStatsUI" or v.Name == "MedusaPanels" then v:Destroy() end
+    if v.Name == "Rayfield" or v.Name == "MedusaStatsUI" or v.Name == "MedusaPanels" or v.Name == "ChironTP" then v:Destroy() end
 end
 
 -- [ UTILITAIRES ] --
@@ -222,13 +273,12 @@ speedLabel.TextStrokeTransparency = 0.3
 speedLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 
 local function attachSpeedDisplay()
-    local char = LocalPlayer.Character; if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    speedBillboard.Adornee = hrp
-    speedBillboard.Parent = CoreGui
+    local c = LocalPlayer.Character; if not c then return end
+    local hrp = c:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+    speedBillboard.Adornee = hrp; speedBillboard.Parent = CoreGui
 end
-LocalPlayer.CharacterAdded:Connect(function(char)
-    char:WaitForChild("HumanoidRootPart"); task.wait(0.1); attachSpeedDisplay()
+LocalPlayer.CharacterAdded:Connect(function(c)
+    c:WaitForChild("HumanoidRootPart"); task.wait(0.1); attachSpeedDisplay()
 end)
 attachSpeedDisplay()
 
@@ -249,6 +299,7 @@ local C = {
     BTN     = Color3.fromRGB(55, 50, 80),
     BTN_RED = Color3.fromRGB(150, 35, 35),
     BTN_GRN = Color3.fromRGB(35, 120, 60),
+    BTN_BLU = Color3.fromRGB(50, 120, 220),
     SEP     = Color3.fromRGB(60, 55, 80),
     WHITE   = Color3.new(1,1,1),
 }
@@ -278,7 +329,6 @@ local function MakeDraggable(frame, handle)
     end)
 end
 
--- Toggle générique avec valeur initiale et callback
 local function TogRow(parent, yPos, label, initVal, callback)
     local row = Instance.new("Frame", parent)
     row.Size = UDim2.new(1,-16,0,30); row.Position = UDim2.new(0,8,0,yPos); row.BackgroundTransparency = 1
@@ -342,7 +392,6 @@ MainWin.Position = UDim2.new(0.5,-117,0.5,-210)
 MainWin.BackgroundColor3 = C.BG; MainWin.BorderSizePixel = 0; MainWin.Active = true
 Corner(MainWin,8); Stroke(MainWin,C.ACCENT,1.5)
 
--- Header
 local Hdr = Instance.new("Frame", MainWin)
 Hdr.Size = UDim2.new(1,0,0,38); Hdr.BackgroundColor3 = C.HEADER; Hdr.BorderSizePixel = 0; Corner(Hdr,8)
 local hMask = Instance.new("Frame", Hdr)
@@ -360,7 +409,6 @@ XBtn.TextColor3 = C.WHITE; XBtn.Font = Enum.Font.GothamBold; XBtn.TextSize = 15;
 XBtn.MouseButton1Click:Connect(function() MainWin.Visible = not MainWin.Visible end)
 MakeDraggable(MainWin, Hdr)
 
--- Tabs
 local TabBar = Instance.new("Frame", MainWin)
 TabBar.Size = UDim2.new(1,-16,0,26); TabBar.Position = UDim2.new(0,8,0,44); TabBar.BackgroundTransparency = 1
 local tLayout = Instance.new("UIListLayout", TabBar)
@@ -402,26 +450,68 @@ end
 local MainPage = CreatePage("Main"); MainPage.Visible = true
 local mY = 6
 
--- Quantum TP
-mY = Sep(MainPage, mY, "Quantum TP"); mY = mY + 4
+-- CHIRON TP
+mY = Sep(MainPage, mY, "Chiron TP"); mY = mY + 4
 
-local posLabel = Instance.new("TextLabel", MainPage)
-posLabel.Size = UDim2.new(1,-16,0,18); posLabel.Position = UDim2.new(0,8,0,mY)
-posLabel.BackgroundTransparency = 1; posLabel.Text = "Position : non sauvegardée"
-posLabel.TextColor3 = C.SUB; posLabel.Font = Enum.Font.Gotham; posLabel.TextSize = 10
-posLabel.TextXAlignment = Enum.TextXAlignment.Left
-mY = mY + 22
-
-Btn(MainPage, mY, "💾  Save Position", C.BTN_GRN, function()
+-- Bouton FUCK EM (TP principal)
+Btn(MainPage, mY, "🚀  FUCK EM  [F]", C.BTN_BLU, function()
     task.spawn(function()
-        saveQuantumPosition()
-        posLabel.Text = "Position : sauvegardée ✓"
-        posLabel.TextColor3 = Color3.fromRGB(80,220,120)
+        teleportAll()
+        if autoBlockEnabled then task.wait(1); checkForBrainrot() end
     end)
 end); mY = mY + 32
 
-Btn(MainPage, mY, "🌀  Teleport  [F]", C.ACCENT, function()
-    task.spawn(teleportToSaved)
+-- Keybind changer
+local keybindBtn = Btn(MainPage, mY, "Keybind: [F]", C.BTN, function() end)
+keybindBtn.MouseButton1Click:Connect(function()
+    keybindBtn.Text = "Press a key..."
+    waitingForKey = true
+end); mY = mY + 32
+
+-- Auto Block toggle
+local autoBlockSetFn
+autoBlockSetFn = TogRow(MainPage, mY, "Auto Block", autoBlockEnabled, function(v)
+    autoBlockEnabled = v; savedCfg.autoBlock = v; saveConfig(savedCfg)
+end); mY = mY + 32
+
+-- Delay label + textbox
+local delayRow = Instance.new("Frame", MainPage)
+delayRow.Size = UDim2.new(1,-16,0,28); delayRow.Position = UDim2.new(0,8,0,mY); delayRow.BackgroundTransparency = 1
+
+local delayLbl = Instance.new("TextLabel", delayRow)
+delayLbl.Size = UDim2.new(0,60,1,0); delayLbl.BackgroundTransparency = 1
+delayLbl.Text = "Delay:"; delayLbl.TextColor3 = C.TEXT; delayLbl.Font = Enum.Font.Gotham; delayLbl.TextSize = 11
+delayLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local delayBox = Instance.new("TextBox", delayRow)
+delayBox.Size = UDim2.new(0,70,0,22); delayBox.Position = UDim2.new(0,55,0.5,-11)
+delayBox.Text = tostring(blockDelay); delayBox.TextColor3 = C.TEXT
+delayBox.Font = Enum.Font.Gotham; delayBox.TextSize = 11
+delayBox.BackgroundColor3 = Color3.fromRGB(40,35,60); delayBox.BorderSizePixel = 0
+delayBox.PlaceholderText = "0.1-5.0"; Corner(delayBox,4); Stroke(delayBox,C.ACCENT,1)
+
+local setDelayBtn = Instance.new("TextButton", delayRow)
+setDelayBtn.Size = UDim2.new(0,38,0,22); setDelayBtn.Position = UDim2.new(0,130,0.5,-11)
+setDelayBtn.BackgroundColor3 = C.ACCENT; setDelayBtn.BorderSizePixel = 0
+setDelayBtn.Text = "SET"; setDelayBtn.TextColor3 = C.WHITE; setDelayBtn.Font = Enum.Font.GothamBold; setDelayBtn.TextSize = 10; Corner(setDelayBtn,4)
+
+local function applyDelay()
+    local num = tonumber(delayBox.Text)
+    if num then
+        blockDelay = math.clamp(math.floor(num*100+0.5)/100, minDelay, maxDelay)
+        delayBox.Text = tostring(blockDelay)
+        savedCfg.blockDelay = blockDelay; saveConfig(savedCfg)
+    else
+        delayBox.Text = tostring(blockDelay)
+    end
+end
+setDelayBtn.MouseButton1Click:Connect(applyDelay)
+delayBox.FocusLost:Connect(applyDelay)
+mY = mY + 34
+
+-- Block All
+Btn(MainPage, mY, "🚫  Block All Players", C.BTN, function()
+    task.spawn(blockAllPlayers)
 end); mY = mY + 36
 
 -- Combat
@@ -456,25 +546,13 @@ end); mY = mY + 36
 
 -- Stealing
 mY = Sep(MainPage, mY, "Stealing"); mY = mY + 4
-
-local setFastSteal = TogRow(MainPage, mY, "Auto Steal (New)", cfg.fastSteal, function(v)
-    cfg.fastSteal = v; persistCfg()
-end); mY = mY + 32
-
-local setInstSteal = TogRow(MainPage, mY, "Instant Steal", cfg.instSteal, function(v)
-    cfg.instSteal = v; persistCfg()
-end); mY = mY + 36
+local setFastSteal = TogRow(MainPage, mY, "Auto Steal (New)", cfg.fastSteal, function(v) cfg.fastSteal=v; persistCfg() end); mY = mY + 32
+local setInstSteal = TogRow(MainPage, mY, "Instant Steal", cfg.instSteal, function(v) cfg.instSteal=v; persistCfg() end); mY = mY + 36
 
 -- Movement
 mY = Sep(MainPage, mY, "Movement"); mY = mY + 4
-
-local setSpeed = TogRow(MainPage, mY, "Speed Boost (57)", cfg.speed, function(v)
-    cfg.speed = v; persistCfg()
-end); mY = mY + 32
-
-local setInfJump = TogRow(MainPage, mY, "Infinite Jump", cfg.infJump, function(v)
-    cfg.infJump = v; persistCfg()
-end); mY = mY + 36
+local setSpeed   = TogRow(MainPage, mY, "Speed Boost (57)", cfg.speed, function(v) cfg.speed=v; persistCfg() end); mY = mY + 32
+local setInfJump = TogRow(MainPage, mY, "Infinite Jump", cfg.infJump, function(v) cfg.infJump=v; persistCfg() end); mY = mY + 36
 
 -- Server
 mY = Sep(MainPage, mY, "Server"); mY = mY + 8
@@ -494,39 +572,24 @@ local VisualPage = CreatePage("Visual")
 local vY = 6
 
 vY = Sep(VisualPage, vY, "ESP"); vY = vY + 4
-
-local setESP = TogRow(VisualPage, vY, "ESP Anti-Invis", cfg.esp, function(v)
-    cfg.esp = v; persistCfg()
-end); vY = vY + 32
-
-local setXray = TogRow(VisualPage, vY, "Base X-Ray", cfg.xray, function(v)
-    cfg.xray = v; persistCfg()
-    if v then enableXRay() else disableXRay() end
-end); vY = vY + 32
-
-local setTimer = TogRow(VisualPage, vY, "Timer ESP", cfg.timerEsp, function(v)
-    cfg.timerEsp = v; persistCfg()
-end); vY = vY + 36
+local setESP   = TogRow(VisualPage, vY, "ESP Anti-Invis", cfg.esp, function(v) cfg.esp=v; persistCfg() end); vY = vY + 32
+local setXray  = TogRow(VisualPage, vY, "Base X-Ray", cfg.xray, function(v) cfg.xray=v; persistCfg(); if v then enableXRay() else disableXRay() end end); vY = vY + 32
+local setTimer = TogRow(VisualPage, vY, "Timer ESP", cfg.timerEsp, function(v) cfg.timerEsp=v; persistCfg() end); vY = vY + 36
 
 vY = Sep(VisualPage, vY, "Effects"); vY = vY + 4
-
 local setAspect = TogRow(VisualPage, vY, "Aspect Ratio (Stretch)", cfg.aspectRatio, function(v)
-    cfg.aspectRatio = v; persistCfg()
-    if v then enableAspectRatio() else disableAspectRatio() end
+    cfg.aspectRatio=v; persistCfg(); if v then enableAspectRatio() else disableAspectRatio() end
 end); vY = vY + 32
-
 local setDark = TogRow(VisualPage, vY, "Dark Mode", cfg.darkMode, function(v)
-    cfg.darkMode = v; persistCfg()
-    Lighting.Brightness = v and 0.1 or 2; Lighting.ClockTime = v and 0 or 14
+    cfg.darkMode=v; persistCfg(); Lighting.Brightness=v and 0.1 or 2; Lighting.ClockTime=v and 0 or 14
 end); vY = vY + 32
-
 local setOpt = TogRow(VisualPage, vY, "FPS Booster", cfg.optimizer, function(v)
-    cfg.optimizer = v; persistCfg(); applyOptimizer(v)
+    cfg.optimizer=v; persistCfg(); applyOptimizer(v)
 end); vY = vY + 10
 VisualPage.CanvasSize = UDim2.new(0,0,0,vY)
 
 -- =============================================
--- [ PANEL FPS/PING STYLE OMAGAD ] --
+-- [ PANEL FPS/PING ] --
 -- =============================================
 local FPSPanel = Instance.new("Frame", HubGui)
 FPSPanel.Size = UDim2.new(0,180,0,46); FPSPanel.Position = UDim2.new(0.5,-90,0,8)
@@ -607,45 +670,39 @@ local function PanelBtn(parent, yPos, label, col, cb)
     if cb then b.MouseButton1Click:Connect(cb) end; return b
 end
 
--- Panel Quantum TP
-local _, qpC = MakePanel("Quantum TP", -152, 88, 142, 90)
-local qPosLbl = Instance.new("TextLabel", qpC)
-qPosLbl.Size = UDim2.new(1,-12,0,16); qPosLbl.Position = UDim2.new(0,6,0,3)
-qPosLbl.BackgroundTransparency = 1; qPosLbl.Text = "Non sauvegardé"
-qPosLbl.TextColor3 = C.SUB; qPosLbl.Font = Enum.Font.Gotham; qPosLbl.TextSize = 10; qPosLbl.TextXAlignment = Enum.TextXAlignment.Left
-
-PanelBtn(qpC, 22, "💾 Save", C.BTN_GRN, function()
+-- Panel Chiron TP
+local _, ctpC = MakePanel("Chiron TP", -152, 88, 142, 120)
+PanelBtn(ctpC, 4,  "🚀 FUCK EM [F]", C.BTN_BLU, function()
     task.spawn(function()
-        saveQuantumPosition()
-        qPosLbl.Text = "Sauvegardé ✓"
-        qPosLbl.TextColor3 = Color3.fromRGB(80,220,120)
-        posLabel.Text = "Position : sauvegardée ✓"
-        posLabel.TextColor3 = Color3.fromRGB(80,220,120)
+        teleportAll()
+        if autoBlockEnabled then task.wait(1); checkForBrainrot() end
     end)
 end)
-PanelBtn(qpC, 50, "🌀 TP  [F]", C.ACCENT, function()
-    task.spawn(teleportToSaved)
+PanelBtn(ctpC, 32, "🚫 Block All", C.BTN, function() task.spawn(blockAllPlayers) end)
+PanelTog(ctpC, 62, "Auto Block", autoBlockEnabled, function(v)
+    autoBlockEnabled = v; savedCfg.autoBlock = v; saveConfig(savedCfg)
+end)
+PanelBtn(ctpC, 90, "Keybind: [F]", C.BTN, function()
+    -- redirige vers le bouton dans le menu
+    MainWin.Visible = true; SwitchTab("Main")
 end)
 
 -- Panel Auto Farm
-local _, farmC = MakePanel("Auto Farm", -152, 191, 142, 92)
-local updateRightPanel = PanelTog(farmC, 4, "Auto Right", savedCfg.autoRight, function(v)
-    savedCfg.autoRight = v; saveConfig(savedCfg); ToggleAutoRight(v)
+local _, farmC = MakePanel("Auto Farm", -152, 221, 142, 92)
+local updateRightPanel = PanelTog(farmC, 4,  "Auto Right", savedCfg.autoRight, function(v)
+    savedCfg.autoRight=v; saveConfig(savedCfg); ToggleAutoRight(v)
 end)
-local updateLeftPanel = PanelTog(farmC, 32, "Auto Left", savedCfg.autoLeft, function(v)
-    savedCfg.autoLeft = v; saveConfig(savedCfg); ToggleAutoLeft(v)
+local updateLeftPanel  = PanelTog(farmC, 32, "Auto Left",  savedCfg.autoLeft, function(v)
+    savedCfg.autoLeft=v; saveConfig(savedCfg); ToggleAutoLeft(v)
 end)
-local updateBatPanel = PanelTog(farmC, 60, "Bat Aimbot", savedCfg.batAimbot, function(v)
-    Enabled.BatAimbot = v; savedCfg.batAimbot = v; saveConfig(savedCfg)
-    if v then startBatAimbot() else stopBatAimbot() end
-    setBatAim(v)
+local updateBatPanel   = PanelTog(farmC, 60, "Bat Aimbot", savedCfg.batAimbot, function(v)
+    Enabled.BatAimbot=v; savedCfg.batAimbot=v; saveConfig(savedCfg)
+    if v then startBatAimbot() else stopBatAimbot() end; setBatAim(v)
 end)
 
 -- Panel Instant Steal V2
-local _, stealC = MakePanel("Instant Steal V2", -152, 296, 142, 102)
-PanelTog(stealC, 4, "Giant Potion", savedCfg.giantPotion, function(v)
-    savedCfg.giantPotion = v; saveConfig(savedCfg)
-end)
+local _, stealC = MakePanel("Instant Steal V2", -152, 326, 142, 102)
+PanelTog(stealC, 4,  "Giant Potion", savedCfg.giantPotion, function(v) savedCfg.giantPotion=v; saveConfig(savedCfg) end)
 PanelBtn(stealC, 32, "Activate (Reset)", C.BTN, function() end)
 PanelBtn(stealC, 60, "Execute (F)", C.ACCENT, function()
     for _, v in pairs(workspace:GetDescendants()) do
@@ -654,37 +711,29 @@ PanelBtn(stealC, 60, "Execute (F)", C.ACCENT, function()
 end)
 
 -- Panel Booster
-local _, boostC = MakePanel("Booster", -152, 411, 142, 100)
+local _, boostC = MakePanel("Booster", -152, 441, 142, 100)
 local walkLbl = Instance.new("TextLabel", boostC)
 walkLbl.Size = UDim2.new(1,-12,0,16); walkLbl.Position = UDim2.new(0,6,0,3)
 walkLbl.BackgroundTransparency = 1; walkLbl.Text = "Walk Speed  0"
 walkLbl.TextColor3 = C.SUB; walkLbl.Font = Enum.Font.Gotham; walkLbl.TextSize = 10; walkLbl.TextXAlignment = Enum.TextXAlignment.Left
-PanelTog(boostC, 22, "Walk Speed", savedCfg.walkSpeed, function(v)
-    cfg.speed = v; savedCfg.walkSpeed = v; saveConfig(savedCfg)
-end)
-PanelTog(boostC, 50, "Steal Speed", savedCfg.stealSpeed, function(v)
-    cfg.fastSteal = v; savedCfg.stealSpeed = v; saveConfig(savedCfg)
-end)
+PanelTog(boostC, 22, "Walk Speed",  savedCfg.walkSpeed,  function(v) cfg.speed=v; savedCfg.walkSpeed=v; saveConfig(savedCfg) end)
+PanelTog(boostC, 50, "Steal Speed", savedCfg.stealSpeed, function(v) cfg.fastSteal=v; savedCfg.stealSpeed=v; saveConfig(savedCfg) end)
 
 -- Panel Base Prot
-local _, bpC = MakePanel("Base Prot", -152, 524, 142, 112)
+local _, bpC = MakePanel("Base Prot", -152, 554, 142, 112)
 PanelBtn(bpC, 4,  "AP Spam Nearest [Q]", C.BTN, function() end)
 PanelBtn(bpC, 32, "Insta Reset [R]", C.BTN_RED, function()
     local h = GetHumanoid(); if h then h.Health = 0 end
 end)
-PanelTog(bpC, 62, "Spam If Stealing", savedCfg.spamSteal, function(v)
-    savedCfg.spamSteal = v; saveConfig(savedCfg)
-end)
-PanelTog(bpC, 88, "Balloon In Base", savedCfg.balloonBase, function(v)
-    savedCfg.balloonBase = v; saveConfig(savedCfg)
-end)
+PanelTog(bpC, 62, "Spam If Stealing", savedCfg.spamSteal,   function(v) savedCfg.spamSteal=v; saveConfig(savedCfg) end)
+PanelTog(bpC, 88, "Balloon In Base",  savedCfg.balloonBase, function(v) savedCfg.balloonBase=v; saveConfig(savedCfg) end)
 
 -- Panel Server
-local _, srvC = MakePanel("Server", -152, 649, 142, 100)
+local _, srvC = MakePanel("Server", -152, 679, 142, 100)
 PanelBtn(srvC, 4,  "Rejoin Server", C.BTN, function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
 end)
-PanelBtn(srvC, 32, "Kick Self", C.BTN, function() LocalPlayer:Kick("Medusa Hub") end)
+PanelBtn(srvC, 32, "Kick Self",   C.BTN, function() LocalPlayer:Kick("Medusa Hub") end)
 PanelBtn(srvC, 60, "Force Reset", C.BTN_RED, function()
     local h = GetHumanoid(); if h then h.Health = 0 end
 end)
@@ -694,10 +743,25 @@ end)
 -- =============================================
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
+
+    -- Changement de keybind en cours
+    if waitingForKey and input.UserInputType == Enum.UserInputType.Keyboard then
+        teleportKey = input.KeyCode
+        keybindBtn.Text = "Keybind: ["..teleportKey.Name.."]"
+        waitingForKey = false
+        return
+    end
+
     if input.KeyCode == Enum.KeyCode.K then
         MainWin.Visible = not MainWin.Visible
-    elseif input.KeyCode == Enum.KeyCode.F then
-        task.spawn(teleportToSaved)
+
+    elseif input.KeyCode == teleportKey then
+        -- F (ou autre key choisie) = Chiron TP
+        task.spawn(function()
+            teleportAll()
+            if autoBlockEnabled then task.wait(1); checkForBrainrot() end
+        end)
+
     elseif input.KeyCode == Enum.KeyCode.R then
         local h = GetHumanoid(); if h then h.Health = 0 end
     end
@@ -709,8 +773,8 @@ end)
 
 -- BAT AIMBOT
 local function getBat()
-    local char = LocalPlayer.Character; if not char then return nil end
-    local tool = char:FindFirstChildWhichIsA("Tool")
+    local c = LocalPlayer.Character; if not c then return nil end
+    local tool = c:FindFirstChildWhichIsA("Tool")
     if tool and tool.Name == "Bat" then return tool end
     local bp = LocalPlayer:FindFirstChild("Backpack")
     if bp then local bt = bp:FindFirstChild("Bat"); if bt then return bt end end
@@ -771,8 +835,8 @@ function startHalfTP()
     if halfTpConnection then return end
     halfTpConnection = RunService.Heartbeat:Connect(function()
         if not cfg.halfTP then return end
-        local char = LocalPlayer.Character; if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+        local c = LocalPlayer.Character; if not c then return end
+        local hrp = c:FindFirstChild("HumanoidRootPart"); if not hrp then return end
         local nearest, nearestDist = nil, math.huge
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character then
@@ -803,11 +867,11 @@ local BOOST_SPEED = 400
 local AR_DEFAULT_SPEED = 16
 
 local function arCache()
-    local char = Player.Character; if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    local root = char:FindFirstChild("HumanoidRootPart")
+    local c = Player.Character; if not c then return false end
+    local hum = c:FindFirstChildOfClass("Humanoid")
+    local root = c:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return false end
-    cachedCharData = {character=char,humanoid=hum,root=root}; return true
+    cachedCharData = {character=c,humanoid=hum,root=root}; return true
 end
 
 local function arDisconnect()
@@ -830,7 +894,7 @@ local function arForceExit()
     for _, d in ipairs(cachedCharData.character:GetDescendants()) do
         if d:IsA("BallSocketConstraint") or (d:IsA("Attachment") and d.Name:find("RagdollAttachment")) then d:Destroy() end
     end
-    if not isBoosting then isBoosting = true; cachedCharData.humanoid.WalkSpeed = BOOST_SPEED end
+    if not isBoosting then isBoosting=true; cachedCharData.humanoid.WalkSpeed=BOOST_SPEED end
     if cachedCharData.humanoid.Health > 0 then cachedCharData.humanoid:ChangeState(Enum.HumanoidStateType.Running) end
     cachedCharData.root.Anchored = false
 end
@@ -856,7 +920,7 @@ function startAntiRagdoll()
         if cam and cachedCharData.humanoid then cam.CameraSubject = cachedCharData.humanoid end
     end))
     table.insert(ragdollConnections, Player.CharacterAdded:Connect(function()
-        isBoosting = false; task.wait(0.5); arCache()
+        isBoosting=false; task.wait(0.5); arCache()
     end))
     task.spawn(arLoop)
 end
@@ -864,7 +928,7 @@ end
 function stopAntiRagdoll()
     antiRagdollMode = nil
     if isBoosting and cachedCharData.humanoid then cachedCharData.humanoid.WalkSpeed = AR_DEFAULT_SPEED end
-    isBoosting = false; arDisconnect(); cachedCharData = {}
+    isBoosting=false; arDisconnect(); cachedCharData={}
 end
 
 -- AUTO WALK
@@ -896,8 +960,8 @@ end
 local function FindClosest(pos, list)
     local ci, cd = 1, math.huge
     for i, wp in ipairs(list) do
-        local d = (Vector3.new(wp.X,pos.Y,wp.Z)-pos).Magnitude
-        if d < cd then cd=d; ci=i end
+        local d=(Vector3.new(wp.X,pos.Y,wp.Z)-pos).Magnitude
+        if d<cd then cd=d; ci=i end
     end
     return ci
 end
@@ -976,64 +1040,28 @@ function enableXRay()
 end
 
 function disableXRay()
-    for part, val in pairs(origTransparency) do if part then part.LocalTransparencyModifier=val end end
+    for part,val in pairs(origTransparency) do if part then part.LocalTransparencyModifier=val end end
     origTransparency={}
 end
 
--- =============================================
--- [ ASPECT RATIO STRETCH (VRAIE RESOLUTION) ] --
--- Principe : on crée une SurfaceGui sur un
--- ViewportFrame qu'on scale en 4:3 dans un
--- container 16:9, ce qui étire le rendu 3D
--- comme un vrai stretch de résolution.
--- =============================================
-local stretchGui = nil
-local stretchCam = nil
-
+-- ASPECT RATIO STRETCH (vrai stretch résolution 4:3 → 16:9)
 function enableAspectRatio()
     if stretchGui then stretchGui:Destroy() end
-
-    -- ScreenGui conteneur fullscreen
     stretchGui = Instance.new("ScreenGui", CoreGui)
-    stretchGui.Name = "MedusaStretch"
-    stretchGui.ResetOnSpawn = false
-    stretchGui.DisplayOrder = -999  -- derrière tout
-    stretchGui.IgnoreGuiInset = true
-
-    -- ViewportFrame qui render la scène en 4:3
-    -- puis est affiché en 16:9 → effet stretch
+    stretchGui.Name = "MedusaStretch"; stretchGui.ResetOnSpawn = false
+    stretchGui.DisplayOrder = -999; stretchGui.IgnoreGuiInset = true
     local vp = Instance.new("ViewportFrame", stretchGui)
-    vp.Size = UDim2.new(1, 0, 1, 0)
-    vp.Position = UDim2.new(0, 0, 0, 0)
-    vp.BackgroundTransparency = 1
-    vp.BorderSizePixel = 0
-
-    -- Caméra dédiée au viewport, calquée sur la vraie caméra
-    stretchCam = Instance.new("Camera")
-    stretchCam.Parent = vp
-    vp.CurrentCamera = stretchCam
-
-    -- Chaque frame on synchronise la caméra du viewport
-    -- MAIS avec un CFrame tronqué en 4:3
-    -- Le viewport prend toute la largeur 16:9
-    -- mais la caméra est configurée comme si l'écran était 4:3
-    -- → les objets sont donc "étirés" horizontalement
+    vp.Size = UDim2.new(1,0,1,0); vp.BackgroundTransparency = 1; vp.BorderSizePixel = 0
+    stretchCam = Instance.new("Camera"); stretchCam.Parent = vp; vp.CurrentCamera = stretchCam
     aspectRatioConnection = RunService.RenderStepped:Connect(function()
         if not cfg.aspectRatio then return end
         local realCam = workspace.CurrentCamera
         if not realCam or not stretchCam then return end
-
         stretchCam.CFrame = realCam.CFrame
-
-        -- On calcule le FOV équivalent 4:3 pour un écran 16:9
-        -- Cela force le rendu à afficher ce qu'une résolution 4:3 verrait
-        -- mais étiré sur toute la largeur 16:9
         local vp_size = realCam.ViewportSize
-        local real_aspect = vp_size.X / vp_size.Y  -- ex: 1.777 pour 16:9
-        local target_aspect = 4/3                   -- 1.333
-        -- FOV horizontal de la vraie caméra
+        local real_aspect = vp_size.X / vp_size.Y
+        local target_aspect = 4/3
         local hfov = 2 * math.atan(math.tan(math.rad(realCam.FieldOfView)/2) * real_aspect)
-        -- On recalcule le VFOV comme si l'écran était 4:3
         local vfov = 2 * math.atan(math.tan(hfov/2) / target_aspect)
         stretchCam.FieldOfView = math.deg(vfov)
     end)
@@ -1152,12 +1180,10 @@ task.spawn(function()
 end)
 
 -- =============================================
--- [ APPLIQUER LES PARAMETRES CHARGES ] --
+-- [ APPLIQUER PARAMETRES CHARGES ] --
 -- =============================================
 task.spawn(function()
     task.wait(1)
-    getRemotes()
-    -- Réappliquer les features actives au chargement
     if cfg.antiRagdoll then startAntiRagdoll() end
     if cfg.halfTP then startHalfTP() end
     if cfg.xray then enableXRay() end
@@ -1172,7 +1198,8 @@ task.spawn(function()
     end
     if Enabled.BatAimbot then startBatAimbot() end
     if Config.AutoRight then ToggleAutoRight(true) end
-    if Config.AutoLeft then ToggleAutoLeft(true) end
+    if Config.AutoLeft  then ToggleAutoLeft(true) end
+    setupBrainrotDetection()
 end)
 
 -- =============================================
@@ -1183,14 +1210,14 @@ task.spawn(function()
     local ng = Instance.new("ScreenGui", CoreGui)
     ng.Name="MedusaNotif"; ng.ResetOnSpawn=false; ng.DisplayOrder=9999
     local nf = Instance.new("Frame", ng)
-    nf.Size=UDim2.new(0,280,0,48); nf.Position=UDim2.new(0.5,-140,1,10)
+    nf.Size=UDim2.new(0,290,0,48); nf.Position=UDim2.new(0.5,-145,1,10)
     nf.BackgroundColor3=C.HEADER; nf.BorderSizePixel=0; Corner(nf,8); Stroke(nf,C.ACCENT,1.5)
     local nl = Instance.new("TextLabel", nf)
     nl.Size=UDim2.new(1,0,1,0); nl.BackgroundTransparency=1
-    nl.Text="✓  MEDUSA HUB V57  •  Paramètres chargés\n[K] menu  •  [F] teleport  •  [R] reset"
+    nl.Text="✓  MEDUSA HUB V57  •  Paramètres chargés\n[K] menu  •  [F] Chiron TP  •  [R] reset"
     nl.TextColor3=C.TEXT; nl.Font=Enum.Font.GothamBold; nl.TextSize=11
-    TweenService:Create(nf, TweenInfo.new(0.4,Enum.EasingStyle.Back), {Position=UDim2.new(0.5,-140,1,-60)}):Play()
+    TweenService:Create(nf, TweenInfo.new(0.4,Enum.EasingStyle.Back), {Position=UDim2.new(0.5,-145,1,-60)}):Play()
     task.wait(4)
-    TweenService:Create(nf, TweenInfo.new(0.3), {Position=UDim2.new(0.5,-140,1,10)}):Play()
+    TweenService:Create(nf, TweenInfo.new(0.3), {Position=UDim2.new(0.5,-145,1,10)}):Play()
     task.wait(0.4); ng:Destroy()
 end)
