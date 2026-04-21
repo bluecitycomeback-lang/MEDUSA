@@ -12,6 +12,7 @@ local StarterGui = game:GetService("StarterGui")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- =============================================
 -- [ SAUVEGARDE DES PARAMETRES ] --
@@ -58,9 +59,9 @@ local function loadConfig()
     return defaultConfig
 end
 
-local function saveConfig(cfg)
+local function saveConfig(t)
     pcall(function()
-        writefile(CONFIG_FILE, game:GetService("HttpService"):JSONEncode(cfg))
+        writefile(CONFIG_FILE, game:GetService("HttpService"):JSONEncode(t))
     end)
 end
 
@@ -111,23 +112,21 @@ local stretchCam = nil
 -- [ CHIRON TP - VARIABLES ] --
 -- =============================================
 local backpack = lp:WaitForChild("Backpack")
-local char = lp.Character or lp.CharacterAdded:Wait()
-local humanoid = char:WaitForChild("Humanoid")
-local hrpChar = char:WaitForChild("HumanoidRootPart")
+local charTP = lp.Character or lp.CharacterAdded:Wait()
+local humanoidTP = charTP:WaitForChild("Humanoid")
+local hrpTP = charTP:WaitForChild("HumanoidRootPart")
 
 lp.CharacterAdded:Connect(function(c)
-    char = c
-    humanoid = c:WaitForChild("Humanoid")
-    hrpChar = c:WaitForChild("HumanoidRootPart")
+    charTP = c
+    humanoidTP = c:WaitForChild("Humanoid")
+    hrpTP = c:WaitForChild("HumanoidRootPart")
 end)
 
 local blockDelay = savedCfg.blockDelay or 0.7
-local minDelay = 0.1
-local maxDelay = 5.0
+local minDelay, maxDelay = 0.1, 5.0
 local autoBlockEnabled = savedCfg.autoBlock
 local teleportKey = Enum.KeyCode.F
 local waitingForKey = false
-
 local REQUIRED_TOOL = "Flying Carpet"
 
 local spots = {
@@ -139,8 +138,7 @@ local spots = {
 local function FastClick()
     task.wait(blockDelay)
     local cam = workspace.CurrentCamera.ViewportSize
-    local x = cam.X / 2
-    local y = cam.Y / 2 + 23
+    local x, y = cam.X/2, cam.Y/2+23
     for _ = 1, 8 do
         VirtualInputManager:SendMouseButtonEvent(x, y, 0, true,  game, 1)
         VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
@@ -154,11 +152,11 @@ local function blockPlayer(plr)
 end
 
 local function equipFlyingCarpet()
-    local tool = backpack:FindFirstChild(REQUIRED_TOOL) or char:FindFirstChild(REQUIRED_TOOL)
+    local tool = backpack:FindFirstChild(REQUIRED_TOOL) or charTP:FindFirstChild(REQUIRED_TOOL)
     if not tool then return false end
-    if tool.Parent ~= char then
-        humanoid:EquipTool(tool)
-        repeat task.wait() until tool.Parent == char
+    if tool.Parent ~= charTP then
+        humanoidTP:EquipTool(tool)
+        repeat task.wait() until tool.Parent == charTP
     end
     return true
 end
@@ -166,22 +164,19 @@ end
 local function checkForBrainrot()
     if not autoBlockEnabled then return false end
     local keywords = {"brainrot","animal","monkey","dog","cat","bird"}
-    local function hasKeyword(name)
+    local function hasKW(name)
         local n = name:lower()
         for _, kw in ipairs(keywords) do if n:find(kw) then return true end end
         return false
     end
     local function checkTools(container)
         for _, tool in ipairs(container:GetChildren()) do
-            if tool:IsA("Tool") and hasKeyword(tool.Name) then
+            if tool:IsA("Tool") and hasKW(tool.Name) then
                 for _, other in ipairs(Players:GetPlayers()) do
                     if other ~= lp and other.Character then
                         local ob = other:FindFirstChild("Backpack")
                         if ob and not ob:FindFirstChild(tool.Name) then
-                            blockPlayer(other)
-                            FastClick()
-                            task.wait(0.25)
-                            return true
+                            blockPlayer(other); FastClick(); task.wait(0.25); return true
                         end
                     end
                 end
@@ -189,7 +184,7 @@ local function checkForBrainrot()
         end
         return false
     end
-    return checkTools(backpack) or checkTools(char)
+    return checkTools(backpack) or checkTools(charTP)
 end
 
 local function setupBrainrotDetection()
@@ -197,11 +192,11 @@ local function setupBrainrotDetection()
     backpack.ChildAdded:Connect(function(child)
         if child:IsA("Tool") then task.wait(0.5); checkForBrainrot() end
     end)
-    char.ChildAdded:Connect(function(child)
+    charTP.ChildAdded:Connect(function(child)
         if child:IsA("Tool") then task.wait(0.5); checkForBrainrot() end
     end)
     lp.CharacterAdded:Connect(function(newChar)
-        char = newChar
+        charTP = newChar
         newChar.ChildAdded:Connect(function(child)
             if child:IsA("Tool") then task.wait(0.5); checkForBrainrot() end
         end)
@@ -216,29 +211,58 @@ local function teleportAll()
         if plr ~= lp then lastTarget = plr; break end
     end
     for _, spot in ipairs(spots) do
-        equipFlyingCarpet()
-        hrpChar.CFrame = spot
-        task.wait(0.12)
+        equipFlyingCarpet(); hrpTP.CFrame = spot; task.wait(0.12)
     end
-    if lastTarget and autoBlockEnabled then
-        blockPlayer(lastTarget)
-        FastClick()
-    end
+    if lastTarget and autoBlockEnabled then blockPlayer(lastTarget); FastClick() end
 end
 
 local function blockAllPlayers()
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= lp then
-            blockPlayer(plr)
-            FastClick()
-            task.wait(0.25)
-        end
+        if plr ~= lp then blockPlayer(plr); FastClick(); task.wait(0.25) end
     end
 end
 
+-- =============================================
+-- [ AP SPAMMER (THORIUM) ] --
+-- =============================================
+local spamming = {}
+
+local function getStealRemote()
+    local net = ReplicatedStorage:FindFirstChild("Packages")
+        and ReplicatedStorage.Packages:FindFirstChild("Net")
+    if not net then return nil end
+    return net:FindFirstChild("StealService/Grab", true)
+end
+
+local function startSpam(player)
+    if spamming[player.UserId] then return end
+    spamming[player.UserId] = true
+    task.spawn(function()
+        while spamming[player.UserId] and player.Parent do
+            local remote = getStealRemote()
+            if remote then
+                pcall(function() remote:FireServer(player.Character) end)
+            end
+            task.wait(0.1)
+        end
+        spamming[player.UserId] = nil
+    end)
+end
+
+local function stopSpam(player)
+    spamming[player.UserId] = nil
+end
+
+local function stopAllSpam()
+    for uid, _ in pairs(spamming) do spamming[uid] = nil end
+end
+
+-- =============================================
 -- [ NETTOYAGE UI ] --
+-- =============================================
 for _, v in pairs(CoreGui:GetChildren()) do
-    if v.Name == "MedusaHubUI" or v.Name == "MedusaNotif" or v.Name == "MedusaStretch" then v:Destroy() end
+    if v.Name == "MedusaHubUI" or v.Name == "MedusaNotif" or v.Name == "MedusaStretch"
+    or v.Name == "ThoriumDashboard" or v.Name == "ThoriumPlayerList" then v:Destroy() end
 end
 for _, v in pairs(lp.PlayerGui:GetChildren()) do
     if v.Name == "Rayfield" or v.Name == "MedusaStatsUI" or v.Name == "MedusaPanels" or v.Name == "ChironTP" then v:Destroy() end
@@ -257,20 +281,16 @@ end)
 -- =============================================
 local speedBillboard = Instance.new("BillboardGui")
 speedBillboard.Name = "CH_SpeedDisplay"
-speedBillboard.Size = UDim2.new(0, 90, 0, 26)
-speedBillboard.StudsOffset = Vector3.new(0, 3.5, 0)
+speedBillboard.Size = UDim2.new(0,90,0,26)
+speedBillboard.StudsOffset = Vector3.new(0,3.5,0)
 speedBillboard.AlwaysOnTop = false
 speedBillboard.ResetOnSpawn = false
 
 local speedLabel = Instance.new("TextLabel", speedBillboard)
-speedLabel.Size = UDim2.new(1, 0, 1, 0)
-speedLabel.BackgroundTransparency = 1
-speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedLabel.Font = Enum.Font.GothamBold
-speedLabel.TextSize = 20
-speedLabel.Text = "0 sp"
-speedLabel.TextStrokeTransparency = 0.3
-speedLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+speedLabel.Size = UDim2.new(1,0,1,0); speedLabel.BackgroundTransparency = 1
+speedLabel.TextColor3 = Color3.fromRGB(255,255,255); speedLabel.Font = Enum.Font.GothamBold
+speedLabel.TextSize = 20; speedLabel.Text = "0 sp"
+speedLabel.TextStrokeTransparency = 0.3; speedLabel.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 
 local function attachSpeedDisplay()
     local c = LocalPlayer.Character; if not c then return end
@@ -300,6 +320,7 @@ local C = {
     BTN_RED = Color3.fromRGB(150, 35, 35),
     BTN_GRN = Color3.fromRGB(35, 120, 60),
     BTN_BLU = Color3.fromRGB(50, 120, 220),
+    BTN_ORG = Color3.fromRGB(200, 100, 30),
     SEP     = Color3.fromRGB(60, 55, 80),
     WHITE   = Color3.new(1,1,1),
 }
@@ -315,9 +336,9 @@ local function MakeDraggable(frame, handle)
     local dragging, dragStart, startPos
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; dragStart = input.Position; startPos = frame.Position
+            dragging=true; dragStart=input.Position; startPos=frame.Position
             input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+                if input.UserInputState == Enum.UserInputState.End then dragging=false end
             end)
         end
     end)
@@ -347,13 +368,13 @@ local function TogRow(parent, yPos, label, initVal, callback)
     btn.Size = UDim2.new(1,0,1,0); btn.BackgroundTransparency = 1; btn.Text = ""
     btn.MouseButton1Click:Connect(function()
         state = not state
-        TweenService:Create(track, TweenInfo.new(0.15,Enum.EasingStyle.Quad), {BackgroundColor3 = state and C.TOG_ON or C.TOG_OFF}):Play()
-        TweenService:Create(knob, TweenInfo.new(0.15,Enum.EasingStyle.Quad), {Position = state and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)}):Play()
+        TweenService:Create(track, TweenInfo.new(0.15,Enum.EasingStyle.Quad), {BackgroundColor3=state and C.TOG_ON or C.TOG_OFF}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.15,Enum.EasingStyle.Quad), {Position=state and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)}):Play()
         if callback then callback(state) end
     end)
     return function(v)
-        state = v; track.BackgroundColor3 = v and C.TOG_ON or C.TOG_OFF
-        knob.Position = v and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)
+        state=v; track.BackgroundColor3=v and C.TOG_ON or C.TOG_OFF
+        knob.Position=v and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)
     end
 end
 
@@ -453,7 +474,6 @@ local mY = 6
 -- CHIRON TP
 mY = Sep(MainPage, mY, "Chiron TP"); mY = mY + 4
 
--- Bouton FUCK EM (TP principal)
 Btn(MainPage, mY, "🚀  FUCK EM  [F]", C.BTN_BLU, function()
     task.spawn(function()
         teleportAll()
@@ -461,108 +481,87 @@ Btn(MainPage, mY, "🚀  FUCK EM  [F]", C.BTN_BLU, function()
     end)
 end); mY = mY + 32
 
--- Keybind changer
-local keybindBtn = Btn(MainPage, mY, "Keybind: [F]", C.BTN, function() end)
+local keybindBtn = Btn(MainPage, mY, "Keybind: [F]", C.BTN, nil)
 keybindBtn.MouseButton1Click:Connect(function()
     keybindBtn.Text = "Press a key..."
     waitingForKey = true
 end); mY = mY + 32
 
--- Auto Block toggle
-local autoBlockSetFn
-autoBlockSetFn = TogRow(MainPage, mY, "Auto Block", autoBlockEnabled, function(v)
-    autoBlockEnabled = v; savedCfg.autoBlock = v; saveConfig(savedCfg)
+TogRow(MainPage, mY, "Auto Block", autoBlockEnabled, function(v)
+    autoBlockEnabled=v; savedCfg.autoBlock=v; saveConfig(savedCfg)
 end); mY = mY + 32
 
--- Delay label + textbox
+-- Delay row
 local delayRow = Instance.new("Frame", MainPage)
 delayRow.Size = UDim2.new(1,-16,0,28); delayRow.Position = UDim2.new(0,8,0,mY); delayRow.BackgroundTransparency = 1
-
 local delayLbl = Instance.new("TextLabel", delayRow)
-delayLbl.Size = UDim2.new(0,60,1,0); delayLbl.BackgroundTransparency = 1
-delayLbl.Text = "Delay:"; delayLbl.TextColor3 = C.TEXT; delayLbl.Font = Enum.Font.Gotham; delayLbl.TextSize = 11
-delayLbl.TextXAlignment = Enum.TextXAlignment.Left
-
+delayLbl.Size = UDim2.new(0,55,1,0); delayLbl.BackgroundTransparency = 1
+delayLbl.Text = "Delay:"; delayLbl.TextColor3 = C.TEXT; delayLbl.Font = Enum.Font.Gotham; delayLbl.TextSize = 11; delayLbl.TextXAlignment = Enum.TextXAlignment.Left
 local delayBox = Instance.new("TextBox", delayRow)
 delayBox.Size = UDim2.new(0,70,0,22); delayBox.Position = UDim2.new(0,55,0.5,-11)
 delayBox.Text = tostring(blockDelay); delayBox.TextColor3 = C.TEXT
 delayBox.Font = Enum.Font.Gotham; delayBox.TextSize = 11
 delayBox.BackgroundColor3 = Color3.fromRGB(40,35,60); delayBox.BorderSizePixel = 0
 delayBox.PlaceholderText = "0.1-5.0"; Corner(delayBox,4); Stroke(delayBox,C.ACCENT,1)
-
-local setDelayBtn = Instance.new("TextButton", delayRow)
-setDelayBtn.Size = UDim2.new(0,38,0,22); setDelayBtn.Position = UDim2.new(0,130,0.5,-11)
-setDelayBtn.BackgroundColor3 = C.ACCENT; setDelayBtn.BorderSizePixel = 0
-setDelayBtn.Text = "SET"; setDelayBtn.TextColor3 = C.WHITE; setDelayBtn.Font = Enum.Font.GothamBold; setDelayBtn.TextSize = 10; Corner(setDelayBtn,4)
-
+local setDelayBtn2 = Instance.new("TextButton", delayRow)
+setDelayBtn2.Size = UDim2.new(0,38,0,22); setDelayBtn2.Position = UDim2.new(0,130,0.5,-11)
+setDelayBtn2.BackgroundColor3 = C.ACCENT; setDelayBtn2.BorderSizePixel = 0
+setDelayBtn2.Text = "SET"; setDelayBtn2.TextColor3 = C.WHITE; setDelayBtn2.Font = Enum.Font.GothamBold; setDelayBtn2.TextSize = 10; Corner(setDelayBtn2,4)
 local function applyDelay()
     local num = tonumber(delayBox.Text)
     if num then
         blockDelay = math.clamp(math.floor(num*100+0.5)/100, minDelay, maxDelay)
-        delayBox.Text = tostring(blockDelay)
-        savedCfg.blockDelay = blockDelay; saveConfig(savedCfg)
-    else
-        delayBox.Text = tostring(blockDelay)
-    end
+        delayBox.Text = tostring(blockDelay); savedCfg.blockDelay=blockDelay; saveConfig(savedCfg)
+    else delayBox.Text = tostring(blockDelay) end
 end
-setDelayBtn.MouseButton1Click:Connect(applyDelay)
-delayBox.FocusLost:Connect(applyDelay)
+setDelayBtn2.MouseButton1Click:Connect(applyDelay); delayBox.FocusLost:Connect(applyDelay)
 mY = mY + 34
 
--- Block All
-Btn(MainPage, mY, "🚫  Block All Players", C.BTN, function()
-    task.spawn(blockAllPlayers)
-end); mY = mY + 36
+Btn(MainPage, mY, "🚫  Block All Players", C.BTN, function() task.spawn(blockAllPlayers) end); mY = mY + 36
 
 -- Combat
 mY = Sep(MainPage, mY, "Combat"); mY = mY + 4
 
 local setBatAim = TogRow(MainPage, mY, "Bat Aimbot", savedCfg.batAimbot, function(v)
-    Enabled.BatAimbot = v; savedCfg.batAimbot = v; saveConfig(savedCfg)
+    Enabled.BatAimbot=v; savedCfg.batAimbot=v; saveConfig(savedCfg)
     if v then startBatAimbot() else stopBatAimbot() end
 end); mY = mY + 32
 
-local setHalfTP = TogRow(MainPage, mY, "Half TP V2", cfg.halfTP, function(v)
-    cfg.halfTP = v; persistCfg()
-    if v then startHalfTP() else stopHalfTP() end
+TogRow(MainPage, mY, "Half TP V2", cfg.halfTP, function(v)
+    cfg.halfTP=v; persistCfg(); if v then startHalfTP() else stopHalfTP() end
 end); mY = mY + 32
 
-local setAntiRag = TogRow(MainPage, mY, "Anti-Ragdoll v1", cfg.antiRagdoll, function(v)
-    cfg.antiRagdoll = v; persistCfg()
-    if v then startAntiRagdoll() else stopAntiRagdoll() end
+TogRow(MainPage, mY, "Anti-Ragdoll v1", cfg.antiRagdoll, function(v)
+    cfg.antiRagdoll=v; persistCfg(); if v then startAntiRagdoll() else stopAntiRagdoll() end
 end); mY = mY + 32
 
-local setAntiTrap = TogRow(MainPage, mY, "Anti-Trap", cfg.antiTrap, function(v)
-    cfg.antiTrap = v; persistCfg()
+TogRow(MainPage, mY, "Anti-Trap", cfg.antiTrap, function(v)
+    cfg.antiTrap=v; persistCfg()
     if v then
         antiTrapConnection = RunService.Heartbeat:Connect(function()
             local trap = Workspace:FindFirstChild("Trap")
             if trap and trap:IsA("Model") then trap:Destroy() end
         end)
-    else
-        if antiTrapConnection then antiTrapConnection:Disconnect(); antiTrapConnection = nil end
-    end
+    else if antiTrapConnection then antiTrapConnection:Disconnect(); antiTrapConnection = nil end end
 end); mY = mY + 36
 
 -- Stealing
 mY = Sep(MainPage, mY, "Stealing"); mY = mY + 4
-local setFastSteal = TogRow(MainPage, mY, "Auto Steal (New)", cfg.fastSteal, function(v) cfg.fastSteal=v; persistCfg() end); mY = mY + 32
-local setInstSteal = TogRow(MainPage, mY, "Instant Steal", cfg.instSteal, function(v) cfg.instSteal=v; persistCfg() end); mY = mY + 36
+TogRow(MainPage, mY, "Auto Steal (New)", cfg.fastSteal, function(v) cfg.fastSteal=v; persistCfg() end); mY = mY + 32
+TogRow(MainPage, mY, "Instant Steal",    cfg.instSteal, function(v) cfg.instSteal=v; persistCfg() end); mY = mY + 36
 
 -- Movement
 mY = Sep(MainPage, mY, "Movement"); mY = mY + 4
-local setSpeed   = TogRow(MainPage, mY, "Speed Boost (57)", cfg.speed, function(v) cfg.speed=v; persistCfg() end); mY = mY + 32
-local setInfJump = TogRow(MainPage, mY, "Infinite Jump", cfg.infJump, function(v) cfg.infJump=v; persistCfg() end); mY = mY + 36
+TogRow(MainPage, mY, "Speed Boost (57)", cfg.speed,    function(v) cfg.speed=v; persistCfg() end); mY = mY + 32
+TogRow(MainPage, mY, "Infinite Jump",    cfg.infJump,  function(v) cfg.infJump=v; persistCfg() end); mY = mY + 36
 
 -- Server
 mY = Sep(MainPage, mY, "Server"); mY = mY + 8
 Btn(MainPage, mY, "Rejoin Server", C.BTN, function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
 end); mY = mY + 32
-Btn(MainPage, mY, "Kick Self", C.BTN, function() LocalPlayer:Kick("Medusa Hub") end); mY = mY + 32
-Btn(MainPage, mY, "Force Reset", C.BTN_RED, function()
-    local h = GetHumanoid(); if h then h.Health = 0 end
-end); mY = mY + 10
+Btn(MainPage, mY, "Kick Self",    C.BTN,     function() LocalPlayer:Kick("Medusa Hub") end); mY = mY + 32
+Btn(MainPage, mY, "Force Reset",  C.BTN_RED, function() local h=GetHumanoid(); if h then h.Health=0 end end); mY = mY + 10
 MainPage.CanvasSize = UDim2.new(0,0,0,mY)
 
 -- =============================================
@@ -572,18 +571,18 @@ local VisualPage = CreatePage("Visual")
 local vY = 6
 
 vY = Sep(VisualPage, vY, "ESP"); vY = vY + 4
-local setESP   = TogRow(VisualPage, vY, "ESP Anti-Invis", cfg.esp, function(v) cfg.esp=v; persistCfg() end); vY = vY + 32
-local setXray  = TogRow(VisualPage, vY, "Base X-Ray", cfg.xray, function(v) cfg.xray=v; persistCfg(); if v then enableXRay() else disableXRay() end end); vY = vY + 32
-local setTimer = TogRow(VisualPage, vY, "Timer ESP", cfg.timerEsp, function(v) cfg.timerEsp=v; persistCfg() end); vY = vY + 36
+TogRow(VisualPage, vY, "ESP Anti-Invis", cfg.esp,     function(v) cfg.esp=v; persistCfg() end); vY = vY + 32
+TogRow(VisualPage, vY, "Base X-Ray",     cfg.xray,    function(v) cfg.xray=v; persistCfg(); if v then enableXRay() else disableXRay() end end); vY = vY + 32
+TogRow(VisualPage, vY, "Timer ESP",      cfg.timerEsp,function(v) cfg.timerEsp=v; persistCfg() end); vY = vY + 36
 
 vY = Sep(VisualPage, vY, "Effects"); vY = vY + 4
-local setAspect = TogRow(VisualPage, vY, "Aspect Ratio (Stretch)", cfg.aspectRatio, function(v)
+TogRow(VisualPage, vY, "Aspect Ratio (Stretch)", cfg.aspectRatio, function(v)
     cfg.aspectRatio=v; persistCfg(); if v then enableAspectRatio() else disableAspectRatio() end
 end); vY = vY + 32
-local setDark = TogRow(VisualPage, vY, "Dark Mode", cfg.darkMode, function(v)
+TogRow(VisualPage, vY, "Dark Mode", cfg.darkMode, function(v)
     cfg.darkMode=v; persistCfg(); Lighting.Brightness=v and 0.1 or 2; Lighting.ClockTime=v and 0 or 14
 end); vY = vY + 32
-local setOpt = TogRow(VisualPage, vY, "FPS Booster", cfg.optimizer, function(v)
+TogRow(VisualPage, vY, "FPS Booster", cfg.optimizer, function(v)
     cfg.optimizer=v; persistCfg(); applyOptimizer(v)
 end); vY = vY + 10
 VisualPage.CanvasSize = UDim2.new(0,0,0,vY)
@@ -652,13 +651,13 @@ local function PanelTog(parent, yPos, label, initVal, callback)
     btn.Size = UDim2.new(1,0,1,0); btn.BackgroundTransparency = 1; btn.Text = ""
     btn.MouseButton1Click:Connect(function()
         state = not state
-        TweenService:Create(track, TweenInfo.new(0.15), {BackgroundColor3 = state and C.TOG_ON or C.TOG_OFF}):Play()
-        TweenService:Create(knob, TweenInfo.new(0.15), {Position = state and UDim2.new(1,-16,0.5,-6.5) or UDim2.new(0,3,0.5,-6.5)}):Play()
+        TweenService:Create(track, TweenInfo.new(0.15), {BackgroundColor3=state and C.TOG_ON or C.TOG_OFF}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.15), {Position=state and UDim2.new(1,-16,0.5,-6.5) or UDim2.new(0,3,0.5,-6.5)}):Play()
         if callback then callback(state) end
     end)
     return function(v)
-        state = v; track.BackgroundColor3 = v and C.TOG_ON or C.TOG_OFF
-        knob.Position = v and UDim2.new(1,-16,0.5,-6.5) or UDim2.new(0,3,0.5,-6.5)
+        state=v; track.BackgroundColor3=v and C.TOG_ON or C.TOG_OFF
+        knob.Position=v and UDim2.new(1,-16,0.5,-6.5) or UDim2.new(0,3,0.5,-6.5)
     end
 end
 
@@ -673,22 +672,114 @@ end
 -- Panel Chiron TP
 local _, ctpC = MakePanel("Chiron TP", -152, 88, 142, 120)
 PanelBtn(ctpC, 4,  "🚀 FUCK EM [F]", C.BTN_BLU, function()
-    task.spawn(function()
-        teleportAll()
-        if autoBlockEnabled then task.wait(1); checkForBrainrot() end
-    end)
+    task.spawn(function() teleportAll(); if autoBlockEnabled then task.wait(1); checkForBrainrot() end end)
 end)
 PanelBtn(ctpC, 32, "🚫 Block All", C.BTN, function() task.spawn(blockAllPlayers) end)
 PanelTog(ctpC, 62, "Auto Block", autoBlockEnabled, function(v)
-    autoBlockEnabled = v; savedCfg.autoBlock = v; saveConfig(savedCfg)
+    autoBlockEnabled=v; savedCfg.autoBlock=v; saveConfig(savedCfg)
 end)
-PanelBtn(ctpC, 90, "Keybind: [F]", C.BTN, function()
-    -- redirige vers le bouton dans le menu
-    MainWin.Visible = true; SwitchTab("Main")
+PanelBtn(ctpC, 90, "Rebind [F]", C.BTN, function()
+    keybindBtn.Text = "Press a key..."; waitingForKey = true; MainWin.Visible = true; SwitchTab("Main")
+end)
+
+-- =============================================
+-- [ PANEL AP SPAMMER (THORIUM) ] --
+-- =============================================
+local apPanel, apContent = MakePanel("AP Spammer", -152, 221, 142, 0)
+
+-- Liste scrollable des joueurs dans le panel
+local apScroll = Instance.new("ScrollingFrame", apContent)
+apScroll.Size = UDim2.new(1,0,1,-32); apScroll.Position = UDim2.new(0,0,0,0)
+apScroll.BackgroundTransparency = 1; apScroll.BorderSizePixel = 0
+apScroll.ScrollBarThickness = 3; apScroll.ScrollBarImageColor3 = C.ACCENT
+apScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+local apLayout = Instance.new("UIListLayout", apScroll)
+apLayout.FillDirection = Enum.FillDirection.Vertical
+apLayout.Padding = UDim.new(0,4)
+apLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+-- Bouton Stop All en bas du panel
+local stopAllBtn = Instance.new("TextButton", apContent)
+stopAllBtn.Size = UDim2.new(1,-12,0,24); stopAllBtn.Position = UDim2.new(0,6,1,-28)
+stopAllBtn.BackgroundColor3 = C.BTN_RED; stopAllBtn.BorderSizePixel = 0
+stopAllBtn.Text = "⛔ Stop All Spam"; stopAllBtn.TextColor3 = C.WHITE
+stopAllBtn.Font = Enum.Font.GothamBold; stopAllBtn.TextSize = 10; Corner(stopAllBtn,5)
+stopAllBtn.MouseButton1Click:Connect(stopAllSpam)
+
+local function createAPRow(player)
+    if player == lp then return end
+
+    local row = Instance.new("Frame", apScroll)
+    row.Name = "APRow_"..player.UserId
+    row.Size = UDim2.new(1,-8,0,34); row.BackgroundColor3 = Color3.fromRGB(38,34,55)
+    row.BorderSizePixel = 0; Corner(row,6)
+
+    local nameLbl = Instance.new("TextLabel", row)
+    nameLbl.Size = UDim2.new(1,-68,1,0); nameLbl.Position = UDim2.new(0,6,0,0)
+    nameLbl.BackgroundTransparency = 1; nameLbl.Text = player.Name
+    nameLbl.TextColor3 = C.TEXT; nameLbl.Font = Enum.Font.GothamBold
+    nameLbl.TextSize = 10; nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+
+    local spamBtn = Instance.new("TextButton", row)
+    spamBtn.Size = UDim2.new(0,58,0,22); spamBtn.Position = UDim2.new(1,-62,0.5,-11)
+    spamBtn.BackgroundColor3 = C.BTN_RED; spamBtn.BorderSizePixel = 0
+    spamBtn.Text = "⚡SPAM"; spamBtn.TextColor3 = C.WHITE
+    spamBtn.Font = Enum.Font.GothamBold; spamBtn.TextSize = 10; Corner(spamBtn,5)
+
+    local active = false
+    spamBtn.MouseButton1Click:Connect(function()
+        active = not active
+        if active then
+            spamBtn.BackgroundColor3 = C.BTN_GRN; spamBtn.Text = "STOP"
+            startSpam(player)
+        else
+            spamBtn.BackgroundColor3 = C.BTN_RED; spamBtn.Text = "⚡SPAM"
+            stopSpam(player)
+        end
+    end)
+
+    player.AncestryChanged:Connect(function()
+        if not player.Parent then
+            spamming[player.UserId] = nil
+            row:Destroy()
+            -- Redimensionner le panel
+        end
+    end)
+
+    return row
+end
+
+local function refreshAPList()
+    for _, child in ipairs(apScroll:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+    local count = 0
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= lp then
+            createAPRow(player)
+            count = count + 1
+        end
+    end
+    -- Ajuste la hauteur du panel dynamiquement
+    local panelH = math.max(90, 26 + math.min(count, 4) * 38 + 36)
+    apPanel.Size = UDim2.new(0,142,0,panelH)
+    apContent.Size = UDim2.new(1,0,1,-26)
+    apScroll.Size = UDim2.new(1,0,1,-32)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    task.wait(1); createAPRow(player); refreshAPList()
+end)
+Players.PlayerRemoving:Connect(function(player)
+    spamming[player.UserId] = nil
+    local row = apScroll:FindFirstChild("APRow_"..player.UserId)
+    if row then row:Destroy() end
+    refreshAPList()
 end)
 
 -- Panel Auto Farm
-local _, farmC = MakePanel("Auto Farm", -152, 221, 142, 92)
+local _, farmC = MakePanel("Auto Farm", -152, 360, 142, 92)
 local updateRightPanel = PanelTog(farmC, 4,  "Auto Right", savedCfg.autoRight, function(v)
     savedCfg.autoRight=v; saveConfig(savedCfg); ToggleAutoRight(v)
 end)
@@ -701,17 +792,17 @@ local updateBatPanel   = PanelTog(farmC, 60, "Bat Aimbot", savedCfg.batAimbot, f
 end)
 
 -- Panel Instant Steal V2
-local _, stealC = MakePanel("Instant Steal V2", -152, 326, 142, 102)
+local _, stealC = MakePanel("Instant Steal V2", -152, 465, 142, 102)
 PanelTog(stealC, 4,  "Giant Potion", savedCfg.giantPotion, function(v) savedCfg.giantPotion=v; saveConfig(savedCfg) end)
 PanelBtn(stealC, 32, "Activate (Reset)", C.BTN, function() end)
 PanelBtn(stealC, 60, "Execute (F)", C.ACCENT, function()
     for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("ProximityPrompt") then v.HoldDuration = 0 end
+        if v:IsA("ProximityPrompt") then v.HoldDuration=0 end
     end
 end)
 
 -- Panel Booster
-local _, boostC = MakePanel("Booster", -152, 441, 142, 100)
+local _, boostC = MakePanel("Booster", -152, 580, 142, 100)
 local walkLbl = Instance.new("TextLabel", boostC)
 walkLbl.Size = UDim2.new(1,-12,0,16); walkLbl.Position = UDim2.new(0,6,0,3)
 walkLbl.BackgroundTransparency = 1; walkLbl.Text = "Walk Speed  0"
@@ -720,23 +811,35 @@ PanelTog(boostC, 22, "Walk Speed",  savedCfg.walkSpeed,  function(v) cfg.speed=v
 PanelTog(boostC, 50, "Steal Speed", savedCfg.stealSpeed, function(v) cfg.fastSteal=v; savedCfg.stealSpeed=v; saveConfig(savedCfg) end)
 
 -- Panel Base Prot
-local _, bpC = MakePanel("Base Prot", -152, 554, 142, 112)
-PanelBtn(bpC, 4,  "AP Spam Nearest [Q]", C.BTN, function() end)
+local _, bpC = MakePanel("Base Prot", -152, 693, 142, 112)
+PanelBtn(bpC, 4,  "AP Spam Nearest [Q]", C.BTN, function()
+    -- Spam le joueur le plus proche
+    local hrp = GetRootPart(); if not hrp then return end
+    local nearest, nearestDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp and p.Character then
+            local eh = p.Character:FindFirstChild("HumanoidRootPart")
+            if eh then
+                local d = (eh.Position - hrp.Position).Magnitude
+                if d < nearestDist then nearestDist=d; nearest=p end
+            end
+        end
+    end
+    if nearest then startSpam(nearest) end
+end)
 PanelBtn(bpC, 32, "Insta Reset [R]", C.BTN_RED, function()
-    local h = GetHumanoid(); if h then h.Health = 0 end
+    local h=GetHumanoid(); if h then h.Health=0 end
 end)
 PanelTog(bpC, 62, "Spam If Stealing", savedCfg.spamSteal,   function(v) savedCfg.spamSteal=v; saveConfig(savedCfg) end)
 PanelTog(bpC, 88, "Balloon In Base",  savedCfg.balloonBase, function(v) savedCfg.balloonBase=v; saveConfig(savedCfg) end)
 
 -- Panel Server
-local _, srvC = MakePanel("Server", -152, 679, 142, 100)
+local _, srvC = MakePanel("Server", -152, 818, 142, 100)
 PanelBtn(srvC, 4,  "Rejoin Server", C.BTN, function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
 end)
-PanelBtn(srvC, 32, "Kick Self",   C.BTN, function() LocalPlayer:Kick("Medusa Hub") end)
-PanelBtn(srvC, 60, "Force Reset", C.BTN_RED, function()
-    local h = GetHumanoid(); if h then h.Health = 0 end
-end)
+PanelBtn(srvC, 32, "Kick Self",   C.BTN,     function() LocalPlayer:Kick("Medusa Hub") end)
+PanelBtn(srvC, 60, "Force Reset", C.BTN_RED, function() local h=GetHumanoid(); if h then h.Health=0 end end)
 
 -- =============================================
 -- [ KEYBINDS ] --
@@ -744,7 +847,6 @@ end)
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
 
-    -- Changement de keybind en cours
     if waitingForKey and input.UserInputType == Enum.UserInputType.Keyboard then
         teleportKey = input.KeyCode
         keybindBtn.Text = "Keybind: ["..teleportKey.Name.."]"
@@ -756,14 +858,31 @@ UserInputService.InputBegan:Connect(function(input, gp)
         MainWin.Visible = not MainWin.Visible
 
     elseif input.KeyCode == teleportKey then
-        -- F (ou autre key choisie) = Chiron TP
         task.spawn(function()
             teleportAll()
             if autoBlockEnabled then task.wait(1); checkForBrainrot() end
         end)
 
+    elseif input.KeyCode == Enum.KeyCode.Q then
+        -- Q = AP Spam nearest
+        local hrp = GetRootPart(); if not hrp then return end
+        local nearest, nearestDist = nil, math.huge
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character then
+                local eh = p.Character:FindFirstChild("HumanoidRootPart")
+                if eh then
+                    local d = (eh.Position - hrp.Position).Magnitude
+                    if d < nearestDist then nearestDist=d; nearest=p end
+                end
+            end
+        end
+        if nearest then
+            if spamming[nearest.UserId] then stopSpam(nearest)
+            else startSpam(nearest) end
+        end
+
     elseif input.KeyCode == Enum.KeyCode.R then
-        local h = GetHumanoid(); if h then h.Health = 0 end
+        local h = GetHumanoid(); if h then h.Health=0 end
     end
 end)
 
@@ -771,7 +890,6 @@ end)
 -- [ FONCTIONS CORE ] --
 -- =============================================
 
--- BAT AIMBOT
 local function getBat()
     local c = LocalPlayer.Character; if not c then return nil end
     local tool = c:FindFirstChildWhichIsA("Tool")
@@ -819,18 +937,15 @@ function startBatAimbot()
                 local yDiff = torso.Position.Y - h.Position.Y
                 local ys = math.abs(yDiff)>0.5 and math.clamp(yDiff*8,-100,100) or tv.Y
                 h.AssemblyLinearVelocity = Vector3.new(md.X*spd,ys,md.Z*spd)
-            else
-                h.AssemblyLinearVelocity = tv
-            end
+            else h.AssemblyLinearVelocity = tv end
         end
     end)
 end
 
 function stopBatAimbot()
-    if Connections.batAimbot then Connections.batAimbot:Disconnect(); Connections.batAimbot = nil end
+    if Connections.batAimbot then Connections.batAimbot:Disconnect(); Connections.batAimbot=nil end
 end
 
--- HALF TP V2
 function startHalfTP()
     if halfTpConnection then return end
     halfTpConnection = RunService.Heartbeat:Connect(function()
@@ -855,7 +970,7 @@ function startHalfTP()
 end
 
 function stopHalfTP()
-    if halfTpConnection then halfTpConnection:Disconnect(); halfTpConnection = nil end
+    if halfTpConnection then halfTpConnection:Disconnect(); halfTpConnection=nil end
 end
 
 -- ANTI RAGDOLL
@@ -905,8 +1020,8 @@ local function arLoop()
         local rag = arIsRag()
         if rag then arForceExit()
         elseif isBoosting then
-            isBoosting = false
-            if cachedCharData.humanoid then cachedCharData.humanoid.WalkSpeed = AR_DEFAULT_SPEED end
+            isBoosting=false
+            if cachedCharData.humanoid then cachedCharData.humanoid.WalkSpeed=AR_DEFAULT_SPEED end
         end
     end
 end
@@ -917,7 +1032,7 @@ function startAntiRagdoll()
     antiRagdollMode = "v1"
     table.insert(ragdollConnections, RunService.RenderStepped:Connect(function()
         local cam = workspace.CurrentCamera
-        if cam and cachedCharData.humanoid then cam.CameraSubject = cachedCharData.humanoid end
+        if cam and cachedCharData.humanoid then cam.CameraSubject=cachedCharData.humanoid end
     end))
     table.insert(ragdollConnections, Player.CharacterAdded:Connect(function()
         isBoosting=false; task.wait(0.5); arCache()
@@ -926,8 +1041,8 @@ function startAntiRagdoll()
 end
 
 function stopAntiRagdoll()
-    antiRagdollMode = nil
-    if isBoosting and cachedCharData.humanoid then cachedCharData.humanoid.WalkSpeed = AR_DEFAULT_SPEED end
+    antiRagdollMode=nil
+    if isBoosting and cachedCharData.humanoid then cachedCharData.humanoid.WalkSpeed=AR_DEFAULT_SPEED end
     isBoosting=false; arDisconnect(); cachedCharData={}
 end
 
@@ -950,7 +1065,7 @@ local waypoints, returnWaypoints = {}, {}
 local returnWaypointIndex = 1
 
 local function StopAutoWalk()
-    if AutoWalkConnection then AutoWalkConnection:Disconnect(); AutoWalkConnection = nil end
+    if AutoWalkConnection then AutoWalkConnection:Disconnect(); AutoWalkConnection=nil end
     waypoints={}; returnWaypoints={}; currentWaypointIndex=1; returnWaypointIndex=1
     isAutoWalking=false; isReturning=false; isPaused=false
     local h=GetHumanoid(); if h then h:Move(Vector3.new(0,0,0)) end
@@ -1044,39 +1159,37 @@ function disableXRay()
     origTransparency={}
 end
 
--- ASPECT RATIO STRETCH (vrai stretch résolution 4:3 → 16:9)
+-- ASPECT RATIO STRETCH
 function enableAspectRatio()
     if stretchGui then stretchGui:Destroy() end
     stretchGui = Instance.new("ScreenGui", CoreGui)
-    stretchGui.Name = "MedusaStretch"; stretchGui.ResetOnSpawn = false
-    stretchGui.DisplayOrder = -999; stretchGui.IgnoreGuiInset = true
+    stretchGui.Name = "MedusaStretch"; stretchGui.ResetOnSpawn=false
+    stretchGui.DisplayOrder=-999; stretchGui.IgnoreGuiInset=true
     local vp = Instance.new("ViewportFrame", stretchGui)
-    vp.Size = UDim2.new(1,0,1,0); vp.BackgroundTransparency = 1; vp.BorderSizePixel = 0
-    stretchCam = Instance.new("Camera"); stretchCam.Parent = vp; vp.CurrentCamera = stretchCam
+    vp.Size = UDim2.new(1,0,1,0); vp.BackgroundTransparency=1; vp.BorderSizePixel=0
+    stretchCam = Instance.new("Camera"); stretchCam.Parent=vp; vp.CurrentCamera=stretchCam
     aspectRatioConnection = RunService.RenderStepped:Connect(function()
         if not cfg.aspectRatio then return end
         local realCam = workspace.CurrentCamera
         if not realCam or not stretchCam then return end
         stretchCam.CFrame = realCam.CFrame
         local vp_size = realCam.ViewportSize
-        local real_aspect = vp_size.X / vp_size.Y
-        local target_aspect = 4/3
-        local hfov = 2 * math.atan(math.tan(math.rad(realCam.FieldOfView)/2) * real_aspect)
-        local vfov = 2 * math.atan(math.tan(hfov/2) / target_aspect)
+        local hfov = 2 * math.atan(math.tan(math.rad(realCam.FieldOfView)/2) * (vp_size.X/vp_size.Y))
+        local vfov = 2 * math.atan(math.tan(hfov/2) / (4/3))
         stretchCam.FieldOfView = math.deg(vfov)
     end)
 end
 
 function disableAspectRatio()
-    if aspectRatioConnection then aspectRatioConnection:Disconnect(); aspectRatioConnection = nil end
-    if stretchGui then stretchGui:Destroy(); stretchGui = nil end
-    stretchCam = nil
+    if aspectRatioConnection then aspectRatioConnection:Disconnect(); aspectRatioConnection=nil end
+    if stretchGui then stretchGui:Destroy(); stretchGui=nil end
+    stretchCam=nil
 end
 
 -- OPTIMIZER
 function applyOptimizer(state)
     if state then
-        Lighting.GlobalShadows = false
+        Lighting.GlobalShadows=false
         for _, v in ipairs(workspace:GetDescendants()) do
             if v:IsA("BasePart") then v.Material=Enum.Material.Plastic; v.Reflectance=0
             elseif v:IsA("Decal") or v:IsA("Texture") then v.Transparency=1 end
@@ -1173,33 +1286,34 @@ task.spawn(function()
         end
         if cfg.fastSteal or cfg.instSteal then
             for _, v in pairs(workspace:GetDescendants()) do
-                if v:IsA("ProximityPrompt") then v.HoldDuration = 0 end
+                if v:IsA("ProximityPrompt") then v.HoldDuration=0 end
             end
         end
     end
 end)
 
 -- =============================================
--- [ APPLIQUER PARAMETRES CHARGES ] --
+-- [ INIT ] --
 -- =============================================
 task.spawn(function()
     task.wait(1)
     if cfg.antiRagdoll then startAntiRagdoll() end
-    if cfg.halfTP then startHalfTP() end
-    if cfg.xray then enableXRay() end
-    if cfg.optimizer then applyOptimizer(true) end
-    if cfg.darkMode then Lighting.Brightness=0.1; Lighting.ClockTime=0 end
-    if cfg.aspectRatio then enableAspectRatio() end
+    if cfg.halfTP       then startHalfTP() end
+    if cfg.xray         then enableXRay() end
+    if cfg.optimizer    then applyOptimizer(true) end
+    if cfg.darkMode     then Lighting.Brightness=0.1; Lighting.ClockTime=0 end
+    if cfg.aspectRatio  then enableAspectRatio() end
     if cfg.antiTrap then
         antiTrapConnection = RunService.Heartbeat:Connect(function()
             local trap = Workspace:FindFirstChild("Trap")
             if trap and trap:IsA("Model") then trap:Destroy() end
         end)
     end
-    if Enabled.BatAimbot then startBatAimbot() end
-    if Config.AutoRight then ToggleAutoRight(true) end
-    if Config.AutoLeft  then ToggleAutoLeft(true) end
+    if Enabled.BatAimbot   then startBatAimbot() end
+    if Config.AutoRight     then ToggleAutoRight(true) end
+    if Config.AutoLeft      then ToggleAutoLeft(true) end
     setupBrainrotDetection()
+    refreshAPList()
 end)
 
 -- =============================================
@@ -1210,14 +1324,14 @@ task.spawn(function()
     local ng = Instance.new("ScreenGui", CoreGui)
     ng.Name="MedusaNotif"; ng.ResetOnSpawn=false; ng.DisplayOrder=9999
     local nf = Instance.new("Frame", ng)
-    nf.Size=UDim2.new(0,290,0,48); nf.Position=UDim2.new(0.5,-145,1,10)
+    nf.Size=UDim2.new(0,300,0,48); nf.Position=UDim2.new(0.5,-150,1,10)
     nf.BackgroundColor3=C.HEADER; nf.BorderSizePixel=0; Corner(nf,8); Stroke(nf,C.ACCENT,1.5)
     local nl = Instance.new("TextLabel", nf)
     nl.Size=UDim2.new(1,0,1,0); nl.BackgroundTransparency=1
-    nl.Text="✓  MEDUSA HUB V57  •  Paramètres chargés\n[K] menu  •  [F] Chiron TP  •  [R] reset"
+    nl.Text="✓  MEDUSA HUB V57  •  Paramètres chargés\n[K] menu  •  [F] TP  •  [Q] AP Spam  •  [R] reset"
     nl.TextColor3=C.TEXT; nl.Font=Enum.Font.GothamBold; nl.TextSize=11
-    TweenService:Create(nf, TweenInfo.new(0.4,Enum.EasingStyle.Back), {Position=UDim2.new(0.5,-145,1,-60)}):Play()
+    TweenService:Create(nf, TweenInfo.new(0.4,Enum.EasingStyle.Back), {Position=UDim2.new(0.5,-150,1,-60)}):Play()
     task.wait(4)
-    TweenService:Create(nf, TweenInfo.new(0.3), {Position=UDim2.new(0.5,-145,1,10)}):Play()
+    TweenService:Create(nf, TweenInfo.new(0.3), {Position=UDim2.new(0.5,-150,1,10)}):Play()
     task.wait(0.4); ng:Destroy()
 end)
